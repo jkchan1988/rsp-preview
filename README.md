@@ -1,3 +1,3 @@
 # Roadster Stunt Paradise — preview
 
-Temporary playtest host for Jason. Not the formal library publish.
+v2 playtest host.
