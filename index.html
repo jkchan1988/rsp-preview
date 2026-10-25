@@ -18,7 +18,7 @@ canvas#c{display:block;width:100%;height:100%;touch-action:none}
 #rotate .icon{font-size:64px;animation:spin 2s ease-in-out infinite}
 @keyframes spin{0%,100%{transform:rotate(0)}50%{transform:rotate(90deg)}}
 #rotate p{font-size:20px;opacity:.9;max-width:320px}
-@media (orientation:portrait){#wrap,#hudTop,#fuelWrap,#controls,#tiltToggle,#combo{display:none!important}#rotate{display:flex}}
+@media (orientation:portrait){#wrap,#hudTop,#fuelWrap,#controls,#tiltToggle,#combo,#starHud{display:none!important}#rotate{display:flex}}
 .hud{position:fixed;pointer-events:none;z-index:10;padding:env(safe-area-inset-top,8px) env(safe-area-inset-right,12px) env(safe-area-inset-bottom,8px) env(safe-area-inset-left,12px)}
 #hudTop{top:0;left:0;right:0;display:none;justify-content:space-between;align-items:flex-start;gap:8px}
 #hudTop .panel{background:rgba(0,0,0,.45);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:14px;padding:8px 14px;font-weight:700;font-size:clamp(14px,2.8vw,22px);border:1px solid rgba(255,255,255,.12)}
@@ -28,24 +28,22 @@ canvas#c{display:block;width:100%;height:100%;touch-action:none}
 #fuelLabel{text-align:center;font-size:11px;font-weight:700;letter-spacing:.08em;opacity:.8;margin-top:2px}
 #pauseBtn{pointer-events:auto;width:48px;height:48px;border-radius:14px;border:1px solid rgba(255,255,255,.2);background:rgba(0,0,0,.45);color:#fff;font-size:22px;cursor:pointer}
 #controls{display:none;position:fixed;inset:0;z-index:5;pointer-events:none}
-.zone{position:absolute;pointer-events:auto;opacity:0}
-#zoneLean{left:0;top:16%;width:34%;height:68%}
-#zoneGas{right:0;top:16%;width:30%;height:68%}
-#btnThrust{pointer-events:auto;position:absolute;right:calc(env(safe-area-inset-right,12px) + 14px);bottom:calc(env(safe-area-inset-bottom,12px) + 14px);width:118px;height:118px;border-radius:50%;border:4px solid rgba(140,220,255,.95);background:radial-gradient(circle at 35% 28%,#9df,#3a7ad0 55%,#0a2858);box-shadow:0 0 32px rgba(80,190,255,.65),inset 0 0 20px rgba(255,255,255,.3);color:#fff;font-weight:900;font-size:14px;letter-spacing:.04em;cursor:pointer;display:flex;align-items:center;justify-content:center;text-align:center;line-height:1.1;z-index:6}
-#btnThrust:active,#btnThrust.on{transform:scale(.92);box-shadow:0 0 48px rgba(140,230,255,1),0 0 80px rgba(255,140,40,.45),inset 0 0 24px rgba(255,255,255,.5);border-color:#fff}
-#hintLean,#hintGas{position:absolute;bottom:calc(env(safe-area-inset-bottom,12px) + 28px);pointer-events:none;opacity:.4;font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
-#hintLean{left:calc(env(safe-area-inset-left,12px) + 16px)}
-#hintGas{right:calc(env(safe-area-inset-right,12px) + 148px)}
-#leanMeter{position:absolute;left:calc(env(safe-area-inset-left,12px) + 10px);top:28%;width:10px;height:44%;border-radius:8px;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.18);pointer-events:none;overflow:hidden;z-index:6}
-#leanFill{position:absolute;left:0;width:100%;height:50%;top:50%;transform:translateY(-50%);background:linear-gradient(180deg,#6cf,#fff 45%,#f86);border-radius:6px;opacity:.25}
-#leanFill.active{opacity:.95;box-shadow:0 0 12px rgba(120,200,255,.8)}
-#tiltToggle{display:none;pointer-events:auto;position:absolute;left:calc(env(safe-area-inset-left,12px) + 8px);top:calc(env(safe-area-inset-top,8px) + 58px);z-index:11;border-radius:12px;border:1px solid rgba(255,255,255,.2);background:rgba(0,0,0,.45);color:#fff;font-size:11px;font-weight:800;letter-spacing:.06em;padding:8px 10px;cursor:pointer;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.pad{position:absolute;pointer-events:auto;border-radius:18px;border:2px solid rgba(255,255,255,.22);background:rgba(0,0,0,.28);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);color:rgba(255,255,255,.7);font-weight:900;font-size:12px;letter-spacing:.06em;display:flex;align-items:center;justify-content:center;text-align:center;line-height:1.15;opacity:.55;transition:opacity .12s, background .12s, border-color .12s, transform .08s}
+.pad.on{opacity:1;background:rgba(40,120,200,.45);border-color:rgba(140,220,255,.85);transform:scale(.97);color:#fff}
+#padGas{left:calc(env(safe-area-inset-left,10px) + 10px);top:18%;width:min(150px,22vw);height:38%}
+#padBrake{left:calc(env(safe-area-inset-left,10px) + 10px);bottom:calc(env(safe-area-inset-bottom,12px) + 14px);width:min(150px,22vw);height:30%}
+#padLeanBack{right:calc(env(safe-area-inset-right,10px) + 10px);top:18%;width:min(150px,22vw);height:38%}
+#padLeanFwd{right:calc(env(safe-area-inset-right,10px) + 10px);bottom:calc(env(safe-area-inset-bottom,12px) + 14px);width:min(150px,22vw);height:30%}
+#btnThrust{pointer-events:auto;position:absolute;left:50%;bottom:calc(env(safe-area-inset-bottom,12px) + 10px);transform:translateX(-50%);width:96px;height:96px;border-radius:50%;border:3px solid rgba(140,220,255,.9);background:radial-gradient(circle at 35% 28%,#9df,#3a7ad0 55%,#0a2858);box-shadow:0 0 24px rgba(80,190,255,.55),inset 0 0 16px rgba(255,255,255,.25);color:#fff;font-weight:900;font-size:12px;letter-spacing:.04em;cursor:pointer;display:flex;align-items:center;justify-content:center;text-align:center;line-height:1.1;z-index:6;opacity:.85}
+#btnThrust:active,#btnThrust.on{opacity:1;box-shadow:0 0 40px rgba(140,230,255,1),0 0 70px rgba(255,140,40,.4),inset 0 0 20px rgba(255,255,255,.45);border-color:#fff;transform:translateX(-50%) scale(.92)}
+#tiltToggle{display:none;pointer-events:auto;position:absolute;left:50%;top:calc(env(safe-area-inset-top,8px) + 78px);transform:translateX(-50%);z-index:11;border-radius:12px;border:1px solid rgba(255,255,255,.2);background:rgba(0,0,0,.45);color:#fff;font-size:11px;font-weight:800;letter-spacing:.06em;padding:8px 10px;cursor:pointer;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 #tiltToggle.on{background:rgba(40,120,200,.55);border-color:rgba(140,220,255,.7)}
 #combo{position:fixed;left:50%;top:calc(env(safe-area-inset-top,8px) + 78px);transform:translateX(-50%);z-index:12;pointer-events:none;font-weight:900;font-size:clamp(18px,4vw,28px);color:#ffd76a;text-shadow:0 2px 10px rgba(0,0,0,.7);opacity:0}
 #combo.punch{animation:comboPunch .35s ease-out}
 @keyframes comboPunch{0%{transform:translateX(-50%) scale(.7);opacity:.4}40%{transform:translateX(-50%) scale(1.25);opacity:1}100%{transform:translateX(-50%) scale(1);opacity:1}}
 .popup{position:fixed;left:50%;top:35%;transform:translate(-50%,-50%);z-index:15;pointer-events:none;font-weight:900;font-size:clamp(22px,5vw,40px);text-shadow:0 2px 12px rgba(0,0,0,.8);animation:pop .9s ease-out forwards;white-space:nowrap}
 .popup.flip{color:#ffd76a;font-size:clamp(28px,6vw,48px);text-shadow:0 0 24px rgba(255,200,60,.9),0 2px 12px rgba(0,0,0,.8)}
+.popup.smash{color:#ff8040;font-size:clamp(26px,5.5vw,44px);text-shadow:0 0 20px rgba(255,100,40,.9),0 2px 12px rgba(0,0,0,.8)}
 .popup.combo{color:#9cf}
 @keyframes pop{0%{opacity:0;transform:translate(-50%,-40%) scale(.6)}15%{opacity:1;transform:translate(-50%,-50%) scale(1.15)}100%{opacity:0;transform:translate(-50%,-80%) scale(1)}}
 #overlay{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;background:rgba(4,8,20,.55);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);padding:env(safe-area-inset-top,16px) env(safe-area-inset-right,16px) env(safe-area-inset-bottom,16px) env(safe-area-inset-left,16px)}
@@ -62,7 +60,7 @@ button.menu.gold{background:linear-gradient(180deg,#ffd76a,#e09020);color:#1a100
 .lvlBtn{aspect-ratio:1;border-radius:16px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#fff;font-weight:800;font-size:20px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
 .lvlBtn small{font-size:10px;opacity:.7;font-weight:600}
 .lvlBtn:disabled{opacity:.35}
-.gradeHero{font-size:clamp(56px,12vw,96px);font-weight:900;line-height:1;margin:8px 0 4px;background:linear-gradient(180deg,#fff,#ffd76a);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 4px 16px rgba(255,180,40,.45))}
+.gradeHero{font-size:clamp(48px,11vw,88px);font-weight:900;line-height:1;margin:8px 0 4px;letter-spacing:4px;filter:drop-shadow(0 4px 16px rgba(255,180,40,.45))}
 .oneMore{font-size:clamp(15px,2.8vw,20px);font-weight:800;color:#9cf;margin-top:4px;letter-spacing:.04em}
 #speedLines{position:fixed;inset:0;pointer-events:none;z-index:4;opacity:0;background:repeating-linear-gradient(90deg,transparent,transparent 40px,rgba(255,255,255,.04) 40px,rgba(255,255,255,.04) 42px);mix-blend-mode:screen}
 </style>
@@ -77,26 +75,26 @@ button.menu.gold{background:linear-gradient(180deg,#ffd76a,#e09020);color:#1a100
 <div id="hudTop" class="hud">
   <div class="panel" id="scorePanel">0</div>
   <div class="panel" id="multPanel">×1</div>
-  <div class="panel" id="gradePanel">—</div>
+  <div class="panel" id="gradePanel">☆☆☆</div>
   <button id="pauseBtn" aria-label="Pause">⏸</button>
 </div>
 <div id="fuelWrap"><div id="fuelBar"><div id="fuelFill"></div></div><div id="fuelLabel">THRUSTER FUEL</div></div>
 <div id="combo">COMBO ×2</div>
 <button id="tiltToggle" type="button" aria-pressed="false">TILT OFF</button>
+<div id="starHud">☆☆☆</div>
 <div id="controls">
-  <div id="zoneLean" class="zone"></div>
-  <div id="zoneGas" class="zone"></div>
-  <div id="leanMeter"><div id="leanFill"></div></div>
+  <div id="padGas" class="pad">GAS<br>▲</div>
+  <div id="padBrake" class="pad">BRAKE<br>▼</div>
+  <div id="padLeanBack" class="pad">LEAN BACK<br>↺</div>
+  <div id="padLeanFwd" class="pad">LEAN FWD<br>↻</div>
   <button id="btnThrust" type="button">THRUST<br>🔥</button>
-  <div id="hintLean">LEAN</div>
-  <div id="hintGas">GAS</div>
 </div>
 <div id="overlay"><div class="card" id="card"></div></div>
 
 <script type="module">
 import * as THREE from 'three';
 
-const STORE_KEY = 'rsp.v3.scores';
+const STORE_KEY = 'rsp.v4.scores';
 function loadScores(){
   try{ const r = localStorage.getItem(STORE_KEY); return r ? JSON.parse(r) : {levels:{}, endless:0}; }
   catch(e){ return {levels:{}, endless:0}; }
@@ -152,6 +150,7 @@ const audio = (()=>{
     star(){ tone(880,0.08,'sine',0.1); tone(1320,0.12,'sine',0.08); },
     land(){ noise(0.14,0.22); tone(100,0.14,'triangle',0.18,45); tone(220,0.06,'sine',0.1); },
     crash(){ noise(0.35,0.28); tone(80,0.3,'sawtooth',0.2,-50); },
+    smash(){ noise(0.22,0.3); tone(160,0.12,'sawtooth',0.18,-80); tone(60,0.2,'square',0.12); },
     win(){ tone(523,0.12,'triangle',0.12); setTimeout(()=>tone(659,0.12,'triangle',0.12),90); setTimeout(()=>tone(784,0.22,'triangle',0.14),180); },
     tick(){ tone(180,0.03,'square',0.04); }
   };
@@ -159,60 +158,51 @@ const audio = (()=>{
 
 function haptic(ms){ try{ if(navigator.vibrate) navigator.vibrate(ms); }catch(e){} }
 
-/* ===== Input ===== */
-const input = { gas:false, thrust:false, lean:0, tiltLean:0, tiltEnabled:false, tiltOk:false };
-const zoneLean = document.getElementById('zoneLean');
-const zoneGas = document.getElementById('zoneGas');
+/* ===== Input — Stunt Paradise faithful =====
+   Gas W/↑, Brake/reverse S/↓, Lean back (backflip) A/←, Lean forward (frontflip) D/→
+   Mobile landscape: left gas+brake, right lean-back + lean-forward, center thruster */
+const input = { gas:false, brake:false, thrust:false, lean:0, tiltLean:0, tiltEnabled:false, tiltOk:false };
+const padGas = document.getElementById('padGas');
+const padBrake = document.getElementById('padBrake');
+const padLeanBack = document.getElementById('padLeanBack');
+const padLeanFwd = document.getElementById('padLeanFwd');
 const btnThrust = document.getElementById('btnThrust');
-const leanFill = document.getElementById('leanFill');
 
 function bindHold(el, on, off){
-  const down = e=>{ e.preventDefault(); audio.gesture(); on(e); };
-  const up = e=>{ e.preventDefault(); off(e); };
+  const down = e=>{ e.preventDefault(); audio.gesture(); on(e); el.classList.add('on'); };
+  const up = e=>{ e.preventDefault(); off(e); el.classList.remove('on'); };
   el.addEventListener('touchstart', down, {passive:false});
   el.addEventListener('touchend', up, {passive:false});
   el.addEventListener('touchcancel', up, {passive:false});
   el.addEventListener('mousedown', down);
   window.addEventListener('mouseup', up);
 }
-function setLeanFromEvent(e){
-  const t = e.touches ? e.touches[0] : e;
-  const r = zoneLean.getBoundingClientRect();
-  const y = (t.clientY - r.top) / r.height;
-  const raw = (0.5 - y) * 2.2;
-  input.lean = Math.max(-1, Math.min(1, raw));
-  updateLeanMeter();
-}
+bindHold(padGas, ()=>{ input.gas=true; }, ()=>{ input.gas=false; });
+bindHold(padBrake, ()=>{ input.brake=true; }, ()=>{ input.brake=false; });
+bindHold(padLeanBack, ()=>{ input.lean=-1; }, ()=>{ if(input.lean<0) input.lean=0; });
+bindHold(padLeanFwd, ()=>{ input.lean=1; }, ()=>{ if(input.lean>0) input.lean=0; });
+bindHold(btnThrust, ()=>{ input.thrust=true; btnThrust.classList.add('on'); audio.thrust(); haptic(8); }, ()=>{ input.thrust=false; btnThrust.classList.remove('on'); });
+
 function effectiveLean(){
   let L = input.lean;
   if(input.tiltEnabled && Math.abs(input.tiltLean) > Math.abs(L)) L = input.tiltLean;
   return L;
 }
-function updateLeanMeter(){
-  const L = effectiveLean();
-  const mag = Math.abs(L);
-  leanFill.classList.toggle('active', mag > 0.05);
-  leanFill.style.height = (18 + mag * 42) + '%';
-  leanFill.style.top = (50 + L * 38) + '%';
-}
-bindHold(zoneLean, e=>setLeanFromEvent(e), ()=>{ input.lean=0; updateLeanMeter(); });
-zoneLean.addEventListener('touchmove', e=>{ e.preventDefault(); setLeanFromEvent(e); }, {passive:false});
-zoneLean.addEventListener('mousemove', e=>{ if(e.buttons) setLeanFromEvent(e); });
-bindHold(zoneGas, ()=>{ input.gas=true; }, ()=>{ input.gas=false; });
-bindHold(btnThrust, ()=>{ input.thrust=true; btnThrust.classList.add('on'); audio.thrust(); haptic(8); }, ()=>{ input.thrust=false; btnThrust.classList.remove('on'); });
 
 window.addEventListener('keydown', e=>{
   audio.gesture();
-  if(e.code==='ArrowLeft'||e.code==='KeyA') input.lean=-0.9;
-  if(e.code==='ArrowRight'||e.code==='KeyD') input.lean=0.9;
-  if(e.code==='ArrowUp'||e.code==='KeyW'||e.code==='Space'){ input.gas=true; e.preventDefault(); }
+  if(e.code==='ArrowLeft'||e.code==='KeyA'){ input.lean=-1; padLeanBack.classList.add('on'); }
+  if(e.code==='ArrowRight'||e.code==='KeyD'){ input.lean=1; padLeanFwd.classList.add('on'); }
+  if(e.code==='ArrowUp'||e.code==='KeyW'||e.code==='Space'){ input.gas=true; padGas.classList.add('on'); e.preventDefault(); }
+  if(e.code==='ArrowDown'||e.code==='KeyS'){ input.brake=true; padBrake.classList.add('on'); e.preventDefault(); }
   if(e.code==='KeyJ'||e.code==='ShiftLeft'||e.code==='ShiftRight'){ if(!input.thrust){ audio.thrust(); haptic(8);} input.thrust=true; btnThrust.classList.add('on'); }
   if(e.code==='KeyP'||e.code==='Escape'){ if(state.mode==='play') togglePause(); }
-  updateLeanMeter();
 });
 window.addEventListener('keyup', e=>{
-  if(e.code==='ArrowLeft'||e.code==='KeyA'||e.code==='ArrowRight'||e.code==='KeyD'){ input.lean=0; updateLeanMeter(); }
-  if(e.code==='ArrowUp'||e.code==='KeyW'||e.code==='Space') input.gas=false;
+  if(e.code==='ArrowLeft'||e.code==='KeyA'){ if(input.lean<0) input.lean=0; padLeanBack.classList.remove('on'); }
+  if(e.code==='ArrowRight'||e.code==='KeyD'){ if(input.lean>0) input.lean=0; padLeanFwd.classList.remove('on'); }
+  if(e.code==='ArrowUp'||e.code==='KeyW'||e.code==='Space'){ input.gas=false; padGas.classList.remove('on'); }
+  if(e.code==='ArrowDown'||e.code==='KeyS'){ input.brake=false; padBrake.classList.remove('on'); }
   if(e.code==='KeyJ'||e.code==='ShiftLeft'||e.code==='ShiftRight'){ input.thrust=false; btnThrust.classList.remove('on'); }
 });
 
@@ -225,7 +215,6 @@ function onTilt(ev){
   const v = landscape ? (typeof b==='number'?b:g) : (typeof g==='number'?g:b);
   input.tiltLean = Math.max(-1, Math.min(1, (v||0)/26));
   input.tiltOk = true;
-  updateLeanMeter();
 }
 function ensureTiltListener(){ if(tiltListening) return; tiltListening=true; window.addEventListener('deviceorientation', onTilt, true); }
 function setTiltEnabled(on){
@@ -239,7 +228,7 @@ function setTiltEnabled(on){
     if(typeof DeviceOrientationEvent!=='undefined' && typeof DeviceOrientationEvent.requestPermission==='function'){
       DeviceOrientationEvent.requestPermission().then(st=>{ if(st!=='granted') setTiltEnabled(false); }).catch(()=>setTiltEnabled(false));
     }
-  } else { input.tiltLean=0; input.tiltOk=false; updateLeanMeter(); }
+  } else { input.tiltLean=0; input.tiltOk=false; }
 }
 document.getElementById('tiltToggle').addEventListener('click', ()=>{ audio.gesture(); audio.ui(); setTiltEnabled(!input.tiltEnabled); });
 document.getElementById('pauseBtn').addEventListener('click', ()=>{ audio.gesture(); if(state.mode==='play') togglePause(); });
@@ -257,12 +246,12 @@ const THEMES = {
 };
 
 /* ===== Level builders ===== */
-function L(name, theme, segments, stars, hazards, tip){
+function L(name, theme, segments, stars, smashables, tip){
   // segments: array of waypoint arrays (gaps between segments = air launches)
   if(segments.length && segments[0] && segments[0].isVector3){
     segments = [segments]; // allow single path
   }
-  return { name, theme, segments, stars:stars||[], hazards:hazards||[], tip:tip||'' };
+  return { name, theme, segments, stars:stars||[], smashables:smashables||[], tip:tip||'' };
 }
 function P(x,y,z=0){ return new THREE.Vector3(x,y,z); }
 function flat(x0,y0,len,n=6,z=0){
@@ -277,16 +266,34 @@ function down(x0,y0,len,drop,n=10,z=0){
 function hump(x0,y0,len,h,n=14,z=0){
   const a=[]; for(let i=0;i<=n;i++){ const t=i/n; a.push(P(x0+len*t, y0+Math.sin(t*Math.PI)*h, z)); } return a;
 }
-function gap(x0,y0,gapLen,platformY,platLen,z=0){
-  // caller places launch then separately places landing — this just returns empty (air)
-  return [];
-}
 function loop(cx, cy, r, startAng, endAng, n=36, z=0){
   const a=[];
   for(let i=0;i<=n;i++){
     const t=i/n;
     const ang = startAng + (endAng-startAng)*t;
     a.push(P(cx + Math.sin(ang)*r, cy - Math.cos(ang)*r, z));
+  }
+  return a;
+}
+/** Corkscrew helix — SP signature spectacle */
+function corkscrew(x0, y0, len, radius, turns, n=48, z0=0){
+  const a=[];
+  for(let i=0;i<=n;i++){
+    const t=i/n;
+    const ang = t * turns * Math.PI * 2;
+    a.push(P(x0 + len*t, y0 + Math.sin(ang)*radius, z0 + Math.cos(ang)*radius - radius));
+  }
+  return a;
+}
+/** Banked wall-ride segment */
+function wallRide(x0, y0, len, height, side=1, n=36, z0=0){
+  const a=[];
+  for(let i=0;i<=n;i++){
+    const t=i/n;
+    const bank = Math.sin(t * Math.PI);
+    const y = y0 + height * Math.sin(t * Math.PI) * 0.85;
+    const z = z0 + side * bank * (5.0 * 0.15 + 4.5);
+    a.push(P(x0 + len*t, y, z));
   }
   return a;
 }
@@ -303,12 +310,14 @@ function join(...segs){
 
 const LEVELS = [];
 (function buildLevels(){
-  // 1 Desert Dawn — tutorial hills (continuous)
+  // 1 Desert Dawn — tutorial + corkscrew
   LEVELS.push(L('Desert Dawn','desert',
-    [join(flat(0,0,40), ramp(40,0,28,12), down(68,12,22,12), flat(90,0,30),
-          ramp(120,0,32,16), down(152,16,26,16), flat(178,0,45))],
-    [{x:52,y:10},{x:105,y:4},{x:145,y:14},{x:200,y:3}],
-    [], 'Hold GAS on the right. Tap THRUST in the air!'));
+    [join(flat(0,0,36), ramp(36,0,26,12), down(62,12,20,12), flat(82,0,18),
+          corkscrew(100, 2, 42, 3.2, 1.0, 40),
+          flat(142,2,16), ramp(158,2,28,14), down(186,16,24,16), flat(210,0,45))],
+    [{x:50,y:10},{x:120,y:6},{x:175,y:12},{x:230,y:3}],
+    [{x:90,y:1,kind:'barrel'},{x:155,y:3,kind:'crate'}],
+    'GAS left · BRAKE below · LEAN BACK / FWD on the right. Smash barrels!'));
 
   // 2 Beach Hop
   LEVELS.push(L('Beach Hop','beach',
@@ -316,25 +325,29 @@ const LEVELS = [];
           ramp(92,0,28,18), down(120,18,22,18), flat(142,0,20),
           hump(162,0,32,9), flat(194,0,40))],
     [{x:42,y:10},{x:108,y:14},{x:135,y:12},{x:178,y:8},{x:220,y:3}],
-    [{x:160,y:2,r:1.0,side:1}], 'Lean (left side) to flip for style.'));
+    [{x:85,y:1,kind:'barrel'},{x:160,y:2,kind:'crate'},{x:200,y:1,kind:'barrel'}],
+    'Lean BACK (A) for backflips · Lean FWD (D) for frontflips.'));
 
-  // 3 Industrial Gap — real air gap between segments
+  // 3 Industrial Gap — wall-ride + smashables
   LEVELS.push(L('Industrial Gap','industrial',
     [
-      join(flat(0,0,32), ramp(32,0,26,16), flat(58,16,6)),
-      join(flat(95,6,28), ramp(123,6,18,8), flat(141,14,8)),
-      join(flat(175,2,22), down(197,2,18,6), flat(215,0,40))
+      join(flat(0,0,28), ramp(28,0,22,10), wallRide(50,10,40,8,1,32), flat(90,10,8)),
+      join(flat(125,6,24), ramp(149,6,16,8), flat(165,14,6)),
+      join(flat(198,2,20), down(218,2,16,6), flat(234,0,40))
     ],
-    [{x:48,y:12},{x:108,y:10},{x:135,y:16},{x:190,y:4},{x:240,y:3}],
-    [{x:80,y:0,r:1.0,side:-1}], 'Build speed, then THRUST across the gap.'));
+    [{x:40,y:10},{x:70,y:16},{x:140,y:10},{x:160,y:16},{x:250,y:3}],
+    [{x:35,y:1,kind:'barrel'},{x:100,y:8,kind:'crate'},{x:155,y:8,kind:'barrel'},{x:210,y:2,kind:'crate'}],
+    'Bank the wall-ride, then THRUST the gap. Smash everything!'));
 
-  // 4 Cyber Loop
+  // 4 Cyber Loop + corkscrew
   LEVELS.push(L('Cyber Loop','cyber',
     [join(flat(0,0,30), ramp(30,0,22,10),
           loop(78, 18, 16, -Math.PI*0.05, Math.PI*2 - Math.PI*0.05, 56),
-          flat(94,0,25), ramp(119,0,20,12), down(139,12,18,12), flat(157,0,40))],
-    [{x:40,y:8},{x:78,y:34},{x:78,y:2},{x:130,y:10},{x:180,y:3}],
-    [], 'Commit to the loop — keep the gas on!'));
+          flat(94,0,18), corkscrew(112, 1, 36, 2.8, 1.25, 36),
+          flat(148,1,20), ramp(168,1,20,12), down(188,13,18,13), flat(206,0,40))],
+    [{x:40,y:8},{x:78,y:34},{x:78,y:2},{x:130,y:5},{x:180,y:10},{x:230,y:3}],
+    [{x:100,y:1,kind:'barrel'},{x:160,y:2,kind:'crate'}],
+    'Loop then corkscrew — keep the gas on!'));
 
   // 5 Candy Waves
   LEVELS.push(L('Candy Waves','candy',
@@ -342,41 +355,46 @@ const LEVELS = [];
           hump(18,0,36,10), hump(54,0,36,13), hump(90,0,36,15),
           hump(126,0,36,11), flat(162,0,45))],
     [{x:36,y:10},{x:72,y:12},{x:108,y:14},{x:144,y:10},{x:190,y:3}],
-    [], 'Ride the waves — clean landings score big.'));
+    [{x:50,y:2,kind:'barrel'},{x:100,y:3,kind:'crate'},{x:140,y:2,kind:'barrel'}],
+    'Ride the waves — clean landings score big.'));
 
-  // 6 Ice Bridge — gap between high platforms
+  // 6 Ice Bridge — wall-ride
   LEVELS.push(L('Ice Bridge','ice',
     [
-      join(flat(0,0,26), ramp(26,0,30,20), flat(56,20,40)),
-      join(flat(120,18,36), down(156,18,28,20), flat(184,0,45))
+      join(flat(0,0,26), ramp(26,0,30,20), flat(56,20,20), wallRide(76,20,36,6,-1,28), flat(112,20,12)),
+      join(flat(148,18,30), down(178,18,28,20), flat(206,0,45))
     ],
-    [{x:42,y:14},{x:72,y:24},{x:135,y:22},{x:170,y:10},{x:210,y:3}],
-    [{x:105,y:8,r:1.0,side:1}], 'High bridge — thrust the gap.'));
+    [{x:42,y:14},{x:72,y:24},{x:95,y:24},{x:160,y:20},{x:230,y:3}],
+    [{x:60,y:21,kind:'crate'},{x:130,y:10,kind:'barrel'},{x:190,y:8,kind:'crate'}],
+    'High bridge wall-ride — thrust the gap.'));
 
-  // 7 Volcano Ring — mega jump then loop
+  // 7 Volcano Ring — corkscrew + loop
   LEVELS.push(L('Volcano Ring','volcano',
     [
       join(flat(0,0,24), ramp(24,0,36,24), flat(60,24,4)),
-      join(flat(100,10,26),
-           loop(150, 22, 14, -0.1, Math.PI*2-0.1, 48),
-           flat(164,0,20), ramp(184,0,22,10), down(206,10,18,10), flat(224,0,40))
+      join(flat(100,10,20),
+           corkscrew(120, 12, 30, 3.5, 1.5, 40),
+           loop(175, 22, 14, -0.1, Math.PI*2-0.1, 48),
+           flat(189,0,18), ramp(207,0,22,10), down(229,10,18,10), flat(247,0,40))
     ],
-    [{x:45,y:16},{x:115,y:14},{x:150,y:36},{x:195,y:10},{x:250,y:3}],
-    [{x:80,y:2,r:1.0,side:-1}], 'Mega jump into the ring of fire.'));
+    [{x:45,y:16},{x:115,y:14},{x:140,y:16},{x:175,y:36},{x:220,y:10},{x:270,y:3}],
+    [{x:50,y:2,kind:'barrel'},{x:110,y:11,kind:'crate'},{x:200,y:2,kind:'barrel'}],
+    'Mega jump into corkscrew + ring of fire.'));
 
-  // 8 Paradise Finale — gaps + loop + waves
+  // 8 Paradise Finale
   LEVELS.push(L('Paradise Finale','paradise',
     [
-      // End with a short launch ramp so the gap jump clears
-      join(flat(0,0,22), hump(22,0,28,8), ramp(50,0,26,14),
-           loop(100, 16, 14, -0.1, Math.PI*2-0.1, 48), flat(114,0,10),
-           ramp(124,0,18,10), flat(142,10,4)),
-      // Flat landing pad then second launch
-      join(flat(168,4,16), ramp(184,4,22,12), flat(206,16,4)),
-      join(flat(232,6,24), down(256,6,22,8), hump(278,0,26,8), flat(304,0,50))
+      join(flat(0,0,20), hump(20,0,24,7),
+           corkscrew(44, 2, 38, 3.0, 1.2, 40),
+           ramp(82,2,22,12),
+           loop(128, 16, 14, -0.1, Math.PI*2-0.1, 48), flat(142,0,8),
+           wallRide(150,0,36,9,1,30), ramp(186,4,16,8), flat(202,12,4)),
+      join(flat(228,4,14), ramp(242,4,20,10), flat(262,14,4)),
+      join(flat(288,6,22), down(310,6,20,8), hump(330,0,24,7), flat(354,0,50))
     ],
-    [{x:36,y:8},{x:70,y:12},{x:100,y:30},{x:150,y:12},{x:190,y:12},{x:245,y:10},{x:290,y:8},{x:330,y:3}],
-    [{x:220,y:2,r:1.0,side:1}], 'Everything you learned — go for S rank!'));
+    [{x:30,y:6},{x:60,y:6},{x:100,y:12},{x:128,y:30},{x:170,y:10},{x:250,y:10},{x:300,y:10},{x:370,y:3}],
+    [{x:40,y:1,kind:'barrel'},{x:90,y:4,kind:'crate'},{x:160,y:2,kind:'barrel'},{x:240,y:5,kind:'crate'},{x:340,y:1,kind:'barrel'}],
+    'Everything — corkscrew, wall-ride, flips. Chase 3 stars!'));
 })();
 
 /* ===== Three.js setup ===== */
@@ -477,14 +495,14 @@ function makeRoadster(){
     rim.rotation.x = Math.PI/2; rim.position.set(x,y,z); g.add(rim);
   }
   g.scale.set(0.85,0.85,0.85);
-  return { group:g, nozzles, wheels, lightBar };
+  return { group:g, nozzles, wheels, lightBar, baseScale:0.85 };
 }
 
 const carVisual = makeRoadster();
 scene.add(carVisual.group);
 
 /* Particles */
-const MAX_P = 180;
+const MAX_P = 220;
 const pPos = new Float32Array(MAX_P*3);
 const pCol = new Float32Array(MAX_P*3);
 const pGeo = new THREE.BufferGeometry();
@@ -602,13 +620,14 @@ function sampleFrames(framesData, globalS){
   return sampleSegment(framesData.segs[framesData.segs.length-1], framesData.segs[framesData.segs.length-1].length);
 }
 
-const TRACK_W = 4.2, TRACK_T = 0.45;
+const TRACK_W = 5.0, TRACK_T = 0.78;
 function clearGroup(g){ while(g.children.length){ const c=g.children.pop(); if(c.geometry) c.geometry.dispose(); } }
 
 function buildTrackMeshes(framesData, theme){
   clearGroup(trackGroup); clearGroup(decorGroup);
-  const matTrack = new THREE.MeshStandardMaterial({ color:theme.track, metalness:0.22, roughness:0.62 });
-  const matRail = new THREE.MeshStandardMaterial({ color:theme.rail, metalness:0.55, roughness:0.35, emissive:theme.rail, emissiveIntensity:0.28 });
+  const matTrack = new THREE.MeshStandardMaterial({ color:theme.track, metalness:0.28, roughness:0.55 });
+  const matUnder = new THREE.MeshStandardMaterial({ color:0x1a1520, metalness:0.4, roughness:0.7 });
+  const matRail = new THREE.MeshStandardMaterial({ color:theme.rail, metalness:0.55, roughness:0.35, emissive:theme.rail, emissiveIntensity:0.32 });
   const matAccent = new THREE.MeshStandardMaterial({ color:theme.accent, metalness:0.35, roughness:0.45, emissive:theme.accent, emissiveIntensity:0.32 });
   const matStripe = new THREE.MeshStandardMaterial({ color:0xf5f0e6, metalness:0.1, roughness:0.45 });
   const matEdge = new THREE.MeshStandardMaterial({ color:theme.rail, metalness:0.4, roughness:0.4, emissive:theme.rail, emissiveIntensity:0.18 });
@@ -627,6 +646,13 @@ function buildTrackMeshes(framesData, theme){
       plank.castShadow = true; plank.receiveShadow = true;
       trackGroup.add(plank);
 
+      if(i % 2 === 0){
+        const under = new THREE.Mesh(new THREE.BoxGeometry(dist*0.95, 0.12, TRACK_W*0.92), matUnder);
+        under.quaternion.copy(plank.quaternion);
+        under.position.copy(mid).add(a.normal.clone().multiplyScalar(-TRACK_T - 0.05));
+        trackGroup.add(under);
+      }
+
       if(i % 3 === 0){
         const stripe = new THREE.Mesh(new THREE.BoxGeometry(dist * 0.7, 0.05, 0.28), matStripe);
         stripe.quaternion.copy(plank.quaternion);
@@ -636,11 +662,11 @@ function buildTrackMeshes(framesData, theme){
       // side curbs
       if(i % 2 === 0){
         for(const side of [-1,1]){
-          const curb = new THREE.Mesh(new THREE.BoxGeometry(dist + 0.05, 0.28, 0.16), matEdge);
+          const curb = new THREE.Mesh(new THREE.BoxGeometry(dist + 0.06, 0.38, 0.22), matEdge);
           curb.quaternion.copy(plank.quaternion);
           curb.position.copy(mid)
             .add(a.normal.clone().multiplyScalar(0.08))
-            .add(a.binormal.clone().multiplyScalar(side * (TRACK_W * 0.5 - 0.05)));
+            .add(a.binormal.clone().multiplyScalar(side * (TRACK_W * 0.5 - 0.08)));
           trackGroup.add(curb);
         }
       }
@@ -648,12 +674,12 @@ function buildTrackMeshes(framesData, theme){
     // Glow rail tubes along edges (thin, above surface)
     for(const side of [-1, 1]){
       const pts = seg.frames.map(f => f.pos.clone()
-        .add(f.normal.clone().multiplyScalar(0.2))
+        .add(f.normal.clone().multiplyScalar(0.28))
         .add(f.binormal.clone().multiplyScalar(side * TRACK_W * 0.5)));
       if(pts.length < 2) continue;
       const railCurve = new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.1);
       const rail = new THREE.Mesh(
-        new THREE.TubeGeometry(railCurve, Math.max(40, Math.floor(seg.length * 2.5)), 0.08, 5, false),
+        new THREE.TubeGeometry(railCurve, Math.max(40, Math.floor(seg.length * 2.5)), 0.1, 6, false),
         matRail
       );
       trackGroup.add(rail);
@@ -682,11 +708,19 @@ function buildTrackMeshes(framesData, theme){
 
   const end = framesData.frames[framesData.frames.length - 1];
   const arch = new THREE.Group();
-  const postGeo = new THREE.BoxGeometry(0.6, 7.5, 0.6);
-  const postL = new THREE.Mesh(postGeo, matRail); postL.position.set(0, 3.75, -2.8); arch.add(postL);
-  const postR = new THREE.Mesh(postGeo, matRail); postR.position.set(0, 3.75, 2.8); arch.add(postR);
-  const top = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 6.2), matAccent); top.position.set(0, 7.5, 0); arch.add(top);
-  const banner = new THREE.Mesh(new THREE.BoxGeometry(0.25, 1.4, 4.6), matAccent); banner.position.set(0, 6.2, 0); arch.add(banner);
+  const postGeo = new THREE.BoxGeometry(0.85, 10, 0.85);
+  const postL = new THREE.Mesh(postGeo, matRail); postL.position.set(0, 5, -3.6); arch.add(postL);
+  const postR = new THREE.Mesh(postGeo, matRail); postR.position.set(0, 5, 3.6); arch.add(postR);
+  const top = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.9, 8.2), matAccent); top.position.set(0, 10, 0); arch.add(top);
+  const banner = new THREE.Mesh(new THREE.BoxGeometry(0.35, 2.2, 6.5), matAccent); banner.position.set(0, 8.2, 0); arch.add(banner);
+  const chevMat = new THREE.MeshStandardMaterial({ color:0xffffff, emissive:theme.accent, emissiveIntensity:1.4, metalness:0.2, roughness:0.3 });
+  for(let c=0;c<3;c++){
+    const chev = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.35, 1.8 - c*0.35), chevMat);
+    chev.position.set(-0.6 - c*0.55, 1.2, 0);
+    arch.add(chev);
+  }
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(3.2, 0.12, 8, 24), matAccent);
+  ring.rotation.y = Math.PI/2; ring.position.set(0.4, 4.5, 0); arch.add(ring);
   arch.position.copy(end.pos);
   arch.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(end.tangent, end.normal, end.binormal));
   decorGroup.add(arch);
@@ -695,10 +729,12 @@ function buildTrackMeshes(framesData, theme){
 function buildPickups(level, framesData){
   clearGroup(pickupGroup);
   const starMat = new THREE.MeshStandardMaterial({ color:0xffd76a, emissive:0xffaa20, emissiveIntensity:0.8, metalness:0.4, roughness:0.3 });
-  const hazardMat = new THREE.MeshStandardMaterial({ color:0xff4040, emissive:0xff2000, emissiveIntensity:0.5, metalness:0.3, roughness:0.5 });
+  const barrelMat = new THREE.MeshStandardMaterial({ color:0xc03018, emissive:0x801000, emissiveIntensity:0.35, metalness:0.3, roughness:0.55 });
+  const crateMat = new THREE.MeshStandardMaterial({ color:0xc8a050, emissive:0x403010, emissiveIntensity:0.15, metalness:0.15, roughness:0.7 });
+  const stripeMat = new THREE.MeshStandardMaterial({ color:0xffe040, emissive:0xaa8000, emissiveIntensity:0.4, metalness:0.2, roughness:0.5 });
+
   level._starMeshes = [];
   for(const s of level.stars){
-    // find nearest frame by x
     let best=framesData.frames[0], bd=1e9;
     for(const f of framesData.frames){
       const d=Math.abs(f.pos.x-s.x)+Math.abs(f.pos.y-(s.y||0));
@@ -711,26 +747,40 @@ function buildPickups(level, framesData){
     pickupGroup.add(star);
     level._starMeshes.push(star);
   }
-  level._hazardMeshes = [];
-  for(const h of level.hazards){
+
+  level._smashMeshes = [];
+  for(const sm of (level.smashables||[])){
     let best=framesData.frames[0], bd=1e9;
     for(const f of framesData.frames){
-      const d=Math.abs(f.pos.x-h.x)+Math.abs(f.pos.y-(h.y||0))*0.5;
+      const d=Math.abs(f.pos.x-sm.x)+Math.abs(f.pos.y-(sm.y||0))*0.5;
       if(d<bd){ bd=d; best=f; }
     }
-    const hz = new THREE.Mesh(new THREE.BoxGeometry(1.1,1.1,1.1), hazardMat);
-    // Sit beside the racing line so center-line driving can pass
-    const side = (h.side != null ? h.side : 1);
-    hz.position.copy(best.pos)
-      .add(best.normal.clone().multiplyScalar(0.9))
-      .add(best.binormal.clone().multiplyScalar(side * (TRACK_W * 0.55)));
-    // Gap-floating hazards: if declared y is far from track, use world pos
-    if(h.y != null && Math.abs(h.y - best.pos.y) > 6){
-      hz.position.set(h.x, h.y, side * 2.2);
+    const kind = sm.kind || 'barrel';
+    let mesh;
+    if(kind==='crate'){
+      mesh = new THREE.Group();
+      const box = new THREE.Mesh(new THREE.BoxGeometry(1.3,1.3,1.3), crateMat);
+      box.castShadow=true; mesh.add(box);
+      const band = new THREE.Mesh(new THREE.BoxGeometry(1.35,0.15,1.35), stripeMat);
+      band.position.y=0.15; mesh.add(band);
+    } else {
+      mesh = new THREE.Group();
+      const cyl = new THREE.Mesh(new THREE.CylinderGeometry(0.55,0.55,1.35,12), barrelMat);
+      cyl.castShadow=true; mesh.add(cyl);
+      const band = new THREE.Mesh(new THREE.TorusGeometry(0.56,0.06,6,16), stripeMat);
+      band.rotation.x=Math.PI/2; band.position.y=0.25; mesh.add(band);
+      const band2 = band.clone(); band2.position.y=-0.25; mesh.add(band2);
     }
-    hz.userData = { kind:'hazard', r:h.r||1.0 };
-    pickupGroup.add(hz);
-    level._hazardMeshes.push(hz);
+    const side = (sm.side != null ? sm.side : ((level._smashMeshes.length%2)?-1:1));
+    mesh.position.copy(best.pos)
+      .add(best.normal.clone().multiplyScalar(0.95))
+      .add(best.binormal.clone().multiplyScalar(side * (TRACK_W * 0.28)));
+    if(sm.y != null && Math.abs(sm.y - best.pos.y) > 6){
+      mesh.position.set(sm.x, sm.y, side * 2.0);
+    }
+    mesh.userData = { kind:'smash', smashed:false, type:kind, r:1.15 };
+    pickupGroup.add(mesh);
+    level._smashMeshes.push(mesh);
   }
 }
 
@@ -739,9 +789,9 @@ const state = {
   mode:'title', // title|select|play|pause|grade|fail
   levelIndex:0, endless:false,
   score:0, mult:1, combo:0, comboTimer:0,
-  fuel:1, starsGot:0, starsTotal:0,
-  flips:0, airTimeTotal:0, cleanLands:0, thrustStyle:0,
-  shake:0, fovPunch:0, grade:'—',
+  fuel:1, starsGot:0, starsTotal:0, smashes:0,
+  flips:0, frontflips:0, backflips:0, airTimeTotal:0, cleanLands:0, thrustStyle:0,
+  shake:0, fovPunch:0, squash:0, grade:'☆☆☆', starGrade:0,
   framesData:null, level:null,
   chunks:[], // endless
 };
@@ -772,9 +822,10 @@ function startLevel(idx, endless=false){
   state.levelIndex = idx;
   state.mode = 'play';
   state.score=0; state.mult=1; state.combo=0; state.comboTimer=0;
-  state.fuel=1; state.starsGot=0; state.flips=0; state.airTimeTotal=0;
-  state.cleanLands=0; state.thrustStyle=0; state.shake=0; state.fovPunch=0;
-  state.grade='—'; state.chunks=[];
+  state.fuel=1; state.starsGot=0; state.smashes=0;
+  state.flips=0; state.frontflips=0; state.backflips=0; state.airTimeTotal=0;
+  state.cleanLands=0; state.thrustStyle=0; state.shake=0; state.fovPunch=0; state.squash=0;
+  state.grade='☆☆☆'; state.starGrade=0; state.chunks=[];
   particles.length=0;
 
   let level;
@@ -805,20 +856,24 @@ function makeEndlessChunk(n){
   const keys = Object.keys(THEMES);
   const theme = keys[n % keys.length];
   const x0 = 0;
-  const wp = join(
+  const pieces = [
     flat(x0,0,20),
     ramp(x0+20,0,24+n%3*4,12+n%4*2),
     down(x0+44,12+n%4*2,20,12+n%4*2),
-    flat(x0+64,0,16),
-    hump(x0+80,0,28,8+n%3*2),
-    (n%2===1 ? loop(x0+130, 14, 12, -0.2, Math.PI*2-0.2, 36) : flat(x0+108,0,30)),
-    flat(x0+145,0,35)
-  );
-  // shift if needed — for endless we rebuild each chunk at 0
-  const stars=[], hazards=[];
+    flat(x0+64,0,12),
+  ];
+  if(n%3===0) pieces.push(corkscrew(x0+76, 2, 36, 2.8, 1.0, 32));
+  else if(n%3===1) pieces.push(wallRide(x0+76, 0, 36, 7, 1, 28));
+  else pieces.push(hump(x0+76,0,28,8+n%3*2));
+  if(n%2===1) pieces.push(loop(x0+140, 14, 12, -0.2, Math.PI*2-0.2, 36));
+  else pieces.push(flat(x0+118,0,30));
+  pieces.push(flat(x0+155,0,35));
+  const wp = join(...pieces);
+  const stars=[], smashables=[];
   for(let i=0;i<4;i++) stars.push({x:30+i*30, y:8});
-  if(n>1) hazards.push({x:70, y:2, r:1.2});
-  return L('Endless '+ (n+1), theme, [wp], stars, hazards, 'How far can you go?');
+  if(n>0) smashables.push({x:55, y:2, kind: n%2?'barrel':'crate'});
+  if(n>1) smashables.push({x:95, y:2, kind:'barrel'});
+  return L('Endless '+ (n+1), theme, [wp], stars, smashables, 'How far can you go?');
 }
 
 function orientCar(fr, pitch){
@@ -836,13 +891,13 @@ function orientCar(fr, pitch){
   carVisual.group.position.copy(car.pos);
 }
 
-function addScore(pts, label){
+function addScore(pts, label, cls){
   const gained = Math.floor(pts * state.mult);
   state.score += gained;
-  if(label) popup(label, /FLIP/.test(label)?'flip':'combo');
+  if(label) popup(label, cls || (/FLIP/.test(label)?'flip':(/SMASH|BOOM/.test(label)?'smash':'combo')));
   if(state.comboTimer>0){ state.combo++; state.mult = Math.min(8, 1+Math.floor(state.combo/2)); }
   else { state.combo=1; state.mult=1; }
-  state.comboTimer = 1.6;
+  state.comboTimer = 1.8;
   punchCombo();
   updateHUD();
 }
@@ -861,26 +916,35 @@ function punchCombo(){
     el.classList.remove('punch'); void el.offsetWidth; el.classList.add('punch');
   } else el.style.opacity='0';
 }
+function starString(n){
+  n = Math.max(0, Math.min(3, n|0));
+  return '★'.repeat(n) + '☆'.repeat(3-n);
+}
+function computeStarGrade(){
+  const tot = state.starsTotal||1;
+  const ratio = state.starsGot / tot;
+  let g = 1;
+  if(ratio >= 0.5 || state.flips >= 1 || state.smashes >= 2) g = 2;
+  if(ratio >= 0.85 || (state.flips >= 2 && state.smashes >= 2)) g = 3;
+  if(state.starsGot >= tot && tot > 0) g = 3;
+  return g;
+}
 function updateHUD(){
   document.getElementById('scorePanel').textContent = state.score.toLocaleString();
   document.getElementById('multPanel').textContent = '×'+state.mult;
-  document.getElementById('gradePanel').textContent = liveGrade();
+  const live = state.mode==='play' ? computeStarGrade() : state.starGrade;
+  const s = starString(live);
+  document.getElementById('gradePanel').textContent = s;
+  const sh = document.getElementById('starHud');
+  if(sh) sh.textContent = s + '  '+state.starsGot+'/'+state.starsTotal;
   document.getElementById('fuelFill').style.width = Math.round(state.fuel*100)+'%';
-}
-function liveGrade(){
-  const t = state.starsTotal||1;
-  const ratio = state.starsGot/t;
-  const style = state.flips*80 + state.cleanLands*60 + state.thrustStyle + state.score*0.02;
-  if(style>900 && ratio>0.8) return 'S';
-  if(style>600 || ratio>0.6) return 'A';
-  if(style>350) return 'B';
-  if(style>150) return 'C';
-  return 'D';
 }
 
 function showPlayUI(on){
   document.getElementById('hudTop').style.display = on?'flex':'none';
   document.getElementById('fuelWrap').style.display = on?'block':'none';
+  const sh = document.getElementById('starHud');
+  if(sh) sh.style.display = on?'block':'none';
   document.getElementById('controls').style.display = on?'block':'none';
   document.getElementById('tiltToggle').style.display = on?'block':'none';
 }
@@ -903,7 +967,7 @@ function showTitle(){
   camState.look.copy(car.pos).add(new THREE.Vector3(4,1,0));
   const card=document.getElementById('card');
   card.innerHTML = '<h1>Roadster Stunt Paradise</h1>'+
-    '<p class="sub">Flip. Boost. Stick the landing. Ano White thruster stunts in 3D.</p>'+
+    '<p class="sub">Gas · Brake · Lean · Flip · Smash. Closer to Stunt Paradise every day.</p>'+
     '<div class="btnRow"><button class="menu gold" id="btnPlay">PLAY</button>'+
     '<button class="menu secondary" id="btnLevels">LEVELS</button>'+
     '<button class="menu secondary" id="btnEndless">ENDLESS</button></div>'+
@@ -916,12 +980,14 @@ function showTitle(){
 
 function showSelect(){
   state.mode='select'; showPlayUI(false);
-  let html='<h1>Select Level</h1><p class="sub">Short spectacular runs — one more try.</p><div id="levelGrid">';
+  let html='<h1>Select Level</h1><p class="sub">Finish for 1★ · collect stars & smash for more.</p><div id="levelGrid">';
   for(let i=0;i<LEVELS.length;i++){
     const unlocked = i===0 || (scores.levels[i-1]!=null);
     const best = scores.levels[i];
+    const bestStars = (best && typeof best==='object' && best.stars!=null) ? starString(best.stars) : '';
+    const bestScore = best==null ? null : (typeof best==='object' ? (best.score||0) : best);
     html += '<button class="lvlBtn" data-i="'+i+'" '+(unlocked?'':'disabled')+'>'+(i+1)+
-      (best!=null?'<small>'+best.toLocaleString()+'</small>':'<small>'+LEVELS[i].name.split(' ')[0]+'</small>')+'</button>';
+      (bestScore!=null?'<small>'+bestScore.toLocaleString()+' '+bestStars+'</small>':'<small>'+LEVELS[i].name.split(' ')[0]+'</small>')+'</button>';
   }
   html += '</div><div class="btnRow"><button class="menu secondary" id="btnBack">BACK</button></div>';
   document.getElementById('card').innerHTML=html;
@@ -963,21 +1029,27 @@ function failRun(reason){
 function winRun(){
   state.mode='grade';
   audio.win(); haptic(20);
-  const grade = liveGrade();
-  state.grade=grade;
+  const starGrade = computeStarGrade();
+  state.starGrade = starGrade;
+  state.grade = starString(starGrade);
   if(!state.endless){
-    const prev = scores.levels[state.levelIndex]||0;
-    if(state.score>prev){ scores.levels[state.levelIndex]=state.score; saveScores(scores); }
+    const prev = scores.levels[state.levelIndex];
+    const prevScore = (prev && typeof prev==='object') ? (prev.score||0) : (prev||0);
+    const prevStars = (prev && typeof prev==='object') ? (prev.stars||0) : 0;
+    if(state.score>prevScore || starGrade>prevStars){
+      scores.levels[state.levelIndex]={score:Math.max(state.score,prevScore), stars:Math.max(starGrade,prevStars)};
+      saveScores(scores);
+    }
   } else {
     if(state.score>(scores.endless||0)){ scores.endless=state.score; saveScores(scores); }
   }
   const next = state.levelIndex+1;
   const hasNext = !state.endless && next < LEVELS.length;
   document.getElementById('card').innerHTML='<h1>'+(state.endless?'Distance!':LEVELS[state.levelIndex].name)+'</h1>'+
-    '<div class="gradeHero">'+grade+'</div>'+
+    '<div class="gradeHero">'+state.grade+'</div>'+
     '<p class="sub">Score '+state.score.toLocaleString()+' · Stars '+state.starsGot+'/'+state.starsTotal+
-    ' · Flips '+state.flips+' · Clean '+state.cleanLands+'</p>'+
-    '<p class="oneMore">One more run — chase that S!</p>'+
+    ' · Flips '+state.flips+' (↑'+state.frontflips+' ↓'+state.backflips+') · Smash '+state.smashes+' · Clean '+state.cleanLands+'</p>'+
+    '<p class="oneMore">One more run — chase ★★★!</p>'+
     '<div class="btnRow">'+
     (hasNext?'<button class="menu gold" id="btnNext">NEXT</button>':'')+
     '<button class="menu" id="btnAgain">AGAIN</button>'+
@@ -991,10 +1063,13 @@ function winRun(){
 /* Physics */
 const GRAV = 28;
 const ACCEL = 38;
-const BRAKE = 22;
+const BRAKE = 48;
+const REVERSE_ACCEL = 22;
 const MAX_SPEED = 48;
+const MAX_REVERSE = -14;
 const THRUST_FORCE = 52;
-const LEAN_TORQUE = 9.5;
+const LEAN_TORQUE = 5.2;   // weighty — not instant snap
+const AIR_DAMP = 0.55;     // less damping = more inertia
 const FUEL_BURN = 0.38;
 const FUEL_REGEN = 0.16;
 const DT = 1/60;
@@ -1058,14 +1133,22 @@ function physicsStep(dt){
     state.fovPunch = Math.max(0, state.fovPunch - dt*2.5);
   }
 
+  state.squash = Math.max(0, state.squash - dt*3.5);
+
   if(car.grounded){
-    // accelerate along track
     if(input.gas) car.speed = Math.min(MAX_SPEED, car.speed + ACCEL*dt);
-    else car.speed = Math.max(6, car.speed - BRAKE*dt*0.35);
+    if(input.brake){
+      if(car.speed > 0.5) car.speed = Math.max(MAX_REVERSE, car.speed - BRAKE*dt);
+      else car.speed = Math.max(MAX_REVERSE, car.speed - REVERSE_ACCEL*dt);
+    } else if(!input.gas){
+      if(car.speed > 6) car.speed = Math.max(6, car.speed - BRAKE*dt*0.2);
+      else if(car.speed < 0) car.speed = Math.min(0, car.speed + BRAKE*dt*0.5);
+    }
     if(input.thrust && state.fuel>0) car.speed = Math.min(MAX_SPEED*1.15, car.speed + THRUST_FORCE*0.45*dt);
 
     const seg = state.framesData.segs[car.segIndex] || state.framesData.segs[0];
     car.s += car.speed * dt;
+    if(car.s < 0){ car.s = 0; car.speed = 0; }
     if(car.s >= seg.length - 0.25){
       const fr = sampleSegment(seg, seg.length);
       const isLast = car.segIndex >= state.framesData.segs.length - 1;
@@ -1076,13 +1159,13 @@ function physicsStep(dt){
       }
       // Launch across gap to next segment
       car.grounded = false;
-      const launchUp = Math.min(22, 8 + car.speed * 0.28);
-      car.vel.copy(fr.tangent).multiplyScalar(car.speed * 1.1);
+      const launchUp = Math.min(22, 8 + Math.abs(car.speed) * 0.28);
+      car.vel.copy(fr.tangent).multiplyScalar(Math.max(8, car.speed) * 1.1);
       // Blend track normal with world up so flat lips still get vertical lift
       const upDir = fr.normal.clone().multiplyScalar(0.65).add(new THREE.Vector3(0, 0.35, 0)).normalize();
       car.vel.add(upDir.multiplyScalar(launchUp));
-      if(car.vel.y < 6) car.vel.y = 6 + car.speed * 0.06;
-      car.pitch = 0; car.pitchVel = lean * 0.45; car.flipAcc = 0;
+      if(car.vel.y < 6) car.vel.y = 6 + Math.abs(car.speed) * 0.06;
+      car.pitch = 0; car.pitchVel = lean * 0.35; car.flipAcc = 0;
       car.pos.copy(fr.pos).add(fr.normal.clone().multiplyScalar(0.95));
       // Mark that we left this segment — prefer next for landing
       car.airGrace = 0.55; // don't re-land on the lip we just left
@@ -1099,29 +1182,36 @@ function physicsStep(dt){
       orientCar(fr, 0);
       if(input.thrust && state.fuel>0){
         emitThrust(fr);
-        // Thrust on rails = speed/FX only; air launches happen at segment gaps
+      }
+      if(car.speed > 28 && Math.random()<0.4){
+        const back = car.pos.clone().add(fr.tangent.clone().multiplyScalar(-1.2));
+        spawnParticle(back.x, back.y, back.z, -fr.tangent.x*6, 0.5, -fr.tangent.z*6, 0.2, 0.7, 0.85, 1.0);
       }
     }
 
   } else {
-    // Airborne
+    // Airborne — weighty SP rotation
     car.airTime += dt;
     if(car.airGrace > 0) car.airGrace = Math.max(0, car.airGrace - dt);
     state.airTimeTotal += dt;
     car.pitchVel += lean * LEAN_TORQUE * dt;
-    car.pitchVel *= (1 - 1.8*dt);
+    car.pitchVel *= (1 - AIR_DAMP*dt);
     car.pitch += car.pitchVel * dt;
-    // flip counting
     car.flipAcc += car.pitchVel * dt;
     while(Math.abs(car.flipAcc) >= Math.PI*2){
-      car.flipAcc -= Math.sign(car.flipAcc)*Math.PI*2;
+      const dir = Math.sign(car.flipAcc);
+      car.flipAcc -= dir*Math.PI*2;
       state.flips++;
-      addScore(250, state.flips+' FLIP!');
+      if(dir < 0){ state.backflips++; addScore(280, 'BACKFLIP!', 'flip'); }
+      else { state.frontflips++; addScore(280, 'FRONTFLIP!', 'flip'); }
       audio.flip(); haptic(12);
       state.shake = Math.max(state.shake, 0.28);
+      state.fovPunch = Math.min(1, state.fovPunch + 0.35);
+    }
+    if(car.airTime > 1.2 && Math.floor(car.airTime*10)%12===0){
+      addScore(15, 'AIR!', 'combo');
     }
 
-    // gravity
     car.vel.y -= GRAV * dt;
     // thruster
     const frApprox = nearestFrame(car.pos);
@@ -1137,6 +1227,7 @@ function physicsStep(dt){
       emitThrust({pos:car.pos, tangent:forward, normal:up, binormal:bin});
     }
     if(input.gas) car.vel.add(forward.clone().normalize().multiplyScalar(ACCEL*0.25*dt));
+    if(input.brake) car.vel.multiplyScalar(1 - 1.2*dt);
 
     car.pos.addScaledVector(car.vel, dt);
     // soft air-right near ground
@@ -1145,7 +1236,7 @@ function physicsStep(dt){
     const height = rel.dot(near.normal);
     const lateral = Math.abs(rel.dot(near.binormal));
     if(height < 5 && height > -1){
-      car.pitchVel += (-car.pitch)*1.8*dt; // auto-right
+      car.pitchVel += (-car.pitch)*1.2*dt; // softer auto-right
     }
     orientCar(near, car.pitch);
 
@@ -1174,13 +1265,15 @@ function physicsStep(dt){
         }
         car.speed = Math.max(8, car.vel.dot(landFr.tangent));
         car.vel.set(0,0,0);
+        const landPitch = car.pitch;
         car.pitch=0; car.pitchVel=0; car.flipAcc=0;
         car.pos.copy(landFr.pos).add(landFr.normal.clone().multiplyScalar(0.95));
-        // landing juice
-        const clean = impact < 16 && Math.abs(car.pitch)<0.5;
+        const clean = impact < 16 && Math.abs(landPitch)<0.5;
+        state.squash = 0.55 + Math.min(0.35, impact/40);
+        state.fovPunch = Math.min(1, state.fovPunch + 0.4 + impact*0.01);
         if(clean){
           state.cleanLands++;
-          addScore(90 + Math.floor(car.airTime*70), 'CLEAN!');
+          addScore(90 + Math.floor(car.airTime*70), 'CLEAN!', 'combo');
           audio.land(); haptic(14);
           state.shake = Math.max(state.shake, 0.35 + Math.min(0.25, impact/40));
         } else {
@@ -1212,10 +1305,17 @@ function physicsStep(dt){
       addScore(150, 'STAR!'); audio.star(); haptic(10);
     }
   }
-  for(const hz of (state.level._hazardMeshes||[])){
-    hz.rotation.y += dt*1.5;
-    if(hz.position.distanceTo(car.pos) < 1.15 + (hz.userData.r||0)*0.45){
-      failRun('Hit a hazard'); return;
+  for(const sm of (state.level._smashMeshes||[])){
+    if(sm.userData.smashed) continue;
+    sm.rotation.y += dt*0.8;
+    if(sm.position.distanceTo(car.pos) < 1.35 + (sm.userData.r||0)*0.3){
+      sm.userData.smashed=true; sm.visible=false;
+      state.smashes++;
+      smashBurst(sm.position, sm.userData.type);
+      addScore(sm.userData.type==='crate'?120:180, sm.userData.type==='crate'?'SMASH!':'BOOM!', 'smash');
+      audio.smash(); haptic(22);
+      state.shake = Math.max(state.shake, 0.48);
+      state.fovPunch = Math.min(1, state.fovPunch + 0.55);
     }
   }
 
@@ -1260,6 +1360,22 @@ function emitThrust(fr){
     }
   }
 }
+function smashBurst(pos, kind){
+  const n = kind==='crate' ? 28 : 36;
+  for(let i=0;i<n;i++){
+    const speed = 8+Math.random()*18;
+    const ang = Math.random()*Math.PI*2;
+    const elev = Math.random()*Math.PI*0.5;
+    spawnParticle(pos.x, pos.y+0.5, pos.z,
+      Math.cos(ang)*Math.cos(elev)*speed,
+      Math.sin(elev)*speed + 4,
+      Math.sin(ang)*Math.cos(elev)*speed,
+      0.4+Math.random()*0.45,
+      kind==='crate' ? 0.9 : 1.0,
+      kind==='crate' ? 0.7 : 0.35+Math.random()*0.3,
+      kind==='crate' ? 0.3 : 0.1);
+  }
+}
 function landBurst(pos){
   for(let i=0;i<18;i++){
     spawnParticle(pos.x, pos.y, pos.z,
@@ -1291,8 +1407,8 @@ function updateCamera(dt){
     back.normalize();
   }
 
-  const dist = 6.8 + Math.min(2.5, car.speed * 0.035);
-  const height = 2.6 + (car.grounded ? 0 : 1.0);
+  const dist = 7.2 + Math.min(2.8, Math.abs(car.speed) * 0.04);
+  const height = 2.8 + (car.grounded ? 0 : 1.1);
   const targetPos = car.pos.clone()
     .add(back.clone().multiplyScalar(dist))
     .add(up.clone().multiplyScalar(height))
@@ -1300,17 +1416,17 @@ function updateCamera(dt){
   // Never let camera sink below ground-ish
   if(targetPos.y < car.pos.y - 2) targetPos.y = car.pos.y + 2;
 
-  const lag = car.grounded ? 0.002 : 0.008;
+  const lag = car.grounded ? 0.004 : 0.012;
   camState.pos.lerp(targetPos, 1 - Math.pow(lag, dt));
   const lookTarget = car.pos.clone()
-    .add(back.clone().multiplyScalar(-3.5))
+    .add(back.clone().multiplyScalar(-3.8))
     .add(up.clone().multiplyScalar(0.55));
-  camState.look.lerp(lookTarget, 1 - Math.pow(0.001, dt));
+  camState.look.lerp(lookTarget, 1 - Math.pow(0.002, dt));
 
   let shakeX=0, shakeY=0;
   if(state.shake>0){
-    shakeX = (Math.random()-0.5)*state.shake*0.9;
-    shakeY = (Math.random()-0.5)*state.shake*0.9;
+    shakeX = (Math.random()-0.5)*state.shake*1.0;
+    shakeY = (Math.random()-0.5)*state.shake*1.0;
   }
   camera.position.copy(camState.pos);
   camera.position.x += shakeX; camera.position.y += shakeY;
@@ -1321,11 +1437,11 @@ function updateCamera(dt){
   if(!car.grounded) camera.rotateZ(roll);
 
   const baseFov = 52;
-  camera.fov = baseFov + state.fovPunch * 12 + Math.min(6, car.speed * 0.1);
+  camera.fov = baseFov + state.fovPunch * 14 + Math.min(7, Math.abs(car.speed) * 0.1);
   camera.updateProjectionMatrix();
 
   const sl = document.getElementById('speedLines');
-  sl.style.opacity = String(Math.min(0.5, state.fovPunch * 0.55 + car.speed / 140));
+  sl.style.opacity = String(Math.min(0.55, state.fovPunch * 0.6 + Math.abs(car.speed) / 130));
 }
 
 function onResize(){
@@ -1354,7 +1470,10 @@ function frame(now){
     carVisual.group.position.copy(car.pos);
     camera.position.copy(camState.pos); camera.lookAt(camState.look);
   }
-  // nozzle glow
+  // Soft landing squash
+  const bs = carVisual.baseScale || 0.85;
+  const sq = state.squash || 0;
+  carVisual.group.scale.set(bs*(1+sq*0.12), bs*(1-sq*0.28), bs*(1+sq*0.12));
   for(const n of carVisual.nozzles){
     n.material.emissiveIntensity = (input.thrust && state.fuel>0 && state.mode==='play') ? 1.2 : 0.25;
   }
@@ -1371,8 +1490,8 @@ requestAnimationFrame(frame);
 
 // Expose for smoke tests
 window.__RSP = {
-  version:3, levels:LEVELS.length, startLevel, showTitle, showSelect, state, car,
-  getScore:()=>state.score, getMode:()=>state.mode
+  version:4, levels:LEVELS.length, startLevel, showTitle, showSelect, state, car,
+  getScore:()=>state.score, getMode:()=>state.mode, getStars:()=>state.starGrade, input
 };
 </script>
 </body>
