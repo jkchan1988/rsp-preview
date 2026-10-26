@@ -44,6 +44,8 @@ canvas#c{display:block;width:100%;height:100%;touch-action:none}
 .popup{position:fixed;left:50%;top:35%;transform:translate(-50%,-50%);z-index:15;pointer-events:none;font-weight:900;font-size:clamp(22px,5vw,40px);text-shadow:0 2px 12px rgba(0,0,0,.8);animation:pop .9s ease-out forwards;white-space:nowrap}
 .popup.flip{color:#ffd76a;font-size:clamp(28px,6vw,48px);text-shadow:0 0 24px rgba(255,200,60,.9),0 2px 12px rgba(0,0,0,.8)}
 .popup.smash{color:#ff8040;font-size:clamp(26px,5.5vw,44px);text-shadow:0 0 20px rgba(255,100,40,.9),0 2px 12px rgba(0,0,0,.8)}
+.popup.checkpoint{color:#7cf7ff;font-size:clamp(24px,5vw,40px);text-shadow:0 0 22px rgba(80,240,255,.95),0 2px 12px rgba(0,0,0,.8)}
+.popup.boost{color:#ffee66;font-size:clamp(26px,5.5vw,44px);text-shadow:0 0 22px rgba(255,220,60,.95),0 2px 12px rgba(0,0,0,.8)}
 .popup.combo{color:#9cf}
 @keyframes pop{0%{opacity:0;transform:translate(-50%,-40%) scale(.6)}15%{opacity:1;transform:translate(-50%,-50%) scale(1.15)}100%{opacity:0;transform:translate(-50%,-80%) scale(1)}}
 #overlay{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;background:rgba(4,8,20,.55);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);padding:env(safe-area-inset-top,16px) env(safe-area-inset-right,16px) env(safe-area-inset-bottom,16px) env(safe-area-inset-left,16px)}
@@ -94,7 +96,7 @@ button.menu.gold{background:linear-gradient(180deg,#ffd76a,#e09020);color:#1a100
 <script type="module">
 import * as THREE from 'three';
 
-const STORE_KEY = 'rsp.v4.scores';
+const STORE_KEY = 'rsp.v5.scores';
 function loadScores(){
   try{ const r = localStorage.getItem(STORE_KEY); return r ? JSON.parse(r) : {levels:{}, endless:0}; }
   catch(e){ return {levels:{}, endless:0}; }
@@ -151,6 +153,7 @@ const audio = (()=>{
     land(){ noise(0.14,0.22); tone(100,0.14,'triangle',0.18,45); tone(220,0.06,'sine',0.1); },
     crash(){ noise(0.35,0.28); tone(80,0.3,'sawtooth',0.2,-50); },
     smash(){ noise(0.22,0.3); tone(160,0.12,'sawtooth',0.18,-80); tone(60,0.2,'square',0.12); },
+    checkpoint(){ tone(640,0.08,'sine',0.1); tone(960,0.12,'triangle',0.1); tone(1280,0.1,'sine',0.07); },
     win(){ tone(523,0.12,'triangle',0.12); setTimeout(()=>tone(659,0.12,'triangle',0.12),90); setTimeout(()=>tone(784,0.22,'triangle',0.14),180); },
     tick(){ tone(180,0.03,'square',0.04); }
   };
@@ -246,12 +249,13 @@ const THEMES = {
 };
 
 /* ===== Level builders ===== */
-function L(name, theme, segments, stars, smashables, tip){
+function L(name, theme, segments, stars, smashables, tip, checkpoints, boostPads){
   // segments: array of waypoint arrays (gaps between segments = air launches)
   if(segments.length && segments[0] && segments[0].isVector3){
     segments = [segments]; // allow single path
   }
-  return { name, theme, segments, stars:stars||[], smashables:smashables||[], tip:tip||'' };
+  return { name, theme, segments, stars:stars||[], smashables:smashables||[], tip:tip||'',
+    checkpoints:checkpoints||[], boostPads:boostPads||[] };
 }
 function P(x,y,z=0){ return new THREE.Vector3(x,y,z); }
 function flat(x0,y0,len,n=6,z=0){
@@ -316,8 +320,10 @@ const LEVELS = [];
           corkscrew(100, 2, 42, 3.2, 1.0, 40),
           flat(142,2,16), ramp(158,2,28,14), down(186,16,24,16), flat(210,0,45))],
     [{x:50,y:10},{x:120,y:6},{x:175,y:12},{x:230,y:3}],
-    [{x:90,y:1,kind:'barrel'},{x:155,y:3,kind:'crate'}],
-    'GAS left · BRAKE below · LEAN BACK / FWD on the right. Smash barrels!'));
+    [{x:90,y:1,kind:'barrel'},{x:130,y:3,kind:'cone'},{x:155,y:3,kind:'crate'},{x:200,y:1,kind:'tire'}],
+    'GAS left · BRAKE below · LEAN BACK / FWD on the right. Smash + boost pads!',
+    [{x:110,y:4}],
+    [{x:70,y:1},{x:220,y:1}]));
 
   // 2 Beach Hop
   LEVELS.push(L('Beach Hop','beach',
@@ -331,13 +337,15 @@ const LEVELS = [];
   // 3 Industrial Gap — wall-ride + smashables
   LEVELS.push(L('Industrial Gap','industrial',
     [
-      join(flat(0,0,28), ramp(28,0,22,10), wallRide(50,10,40,8,1,32), flat(90,10,8)),
-      join(flat(125,6,24), ramp(149,6,16,8), flat(165,14,6)),
-      join(flat(198,2,20), down(218,2,16,6), flat(234,0,40))
+      join(flat(0,0,28), ramp(28,0,22,10), wallRide(50,10,72,8,1,48), flat(122,10,8)),
+      join(flat(155,6,24), ramp(179,6,16,8), flat(195,14,6)),
+      join(flat(228,2,20), down(248,2,16,6), flat(264,0,40))
     ],
-    [{x:40,y:10},{x:70,y:16},{x:140,y:10},{x:160,y:16},{x:250,y:3}],
-    [{x:35,y:1,kind:'barrel'},{x:100,y:8,kind:'crate'},{x:155,y:8,kind:'barrel'},{x:210,y:2,kind:'crate'}],
-    'Bank the wall-ride, then THRUST the gap. Smash everything!'));
+    [{x:40,y:10},{x:70,y:16},{x:160,y:10},{x:190,y:16},{x:280,y:3}],
+    [{x:35,y:1,kind:'barrel'},{x:100,y:8,kind:'crate'},{x:120,y:9,kind:'cone'},{x:185,y:8,kind:'tire'},{x:240,y:2,kind:'crate'}],
+    'Bank the long wall-ride, then THRUST the gap. Smash everything!',
+    [{x:85,y:14}],
+    [{x:40,y:1}]));
 
   // 4 Cyber Loop + corkscrew
   LEVELS.push(L('Cyber Loop','cyber',
@@ -347,7 +355,9 @@ const LEVELS = [];
           flat(148,1,20), ramp(168,1,20,12), down(188,13,18,13), flat(206,0,40))],
     [{x:40,y:8},{x:78,y:34},{x:78,y:2},{x:130,y:5},{x:180,y:10},{x:230,y:3}],
     [{x:100,y:1,kind:'barrel'},{x:160,y:2,kind:'crate'}],
-    'Loop then corkscrew — keep the gas on!'));
+    'Loop then corkscrew — hit the boost pad!',
+    [{x:155,y:3}],
+    [{x:50,y:1},{x:200,y:1}]));
 
   // 5 Candy Waves
   LEVELS.push(L('Candy Waves','candy',
@@ -361,12 +371,13 @@ const LEVELS = [];
   // 6 Ice Bridge — wall-ride
   LEVELS.push(L('Ice Bridge','ice',
     [
-      join(flat(0,0,26), ramp(26,0,30,20), flat(56,20,20), wallRide(76,20,36,6,-1,28), flat(112,20,12)),
-      join(flat(148,18,30), down(178,18,28,20), flat(206,0,45))
+      join(flat(0,0,26), ramp(26,0,30,20), flat(56,20,20), wallRide(76,20,65,6,-1,44), flat(141,20,12)),
+      join(flat(178,18,30), down(208,18,28,20), flat(236,0,45))
     ],
-    [{x:42,y:14},{x:72,y:24},{x:95,y:24},{x:160,y:20},{x:230,y:3}],
-    [{x:60,y:21,kind:'crate'},{x:130,y:10,kind:'barrel'},{x:190,y:8,kind:'crate'}],
-    'High bridge wall-ride — thrust the gap.'));
+    [{x:42,y:14},{x:72,y:24},{x:110,y:24},{x:190,y:20},{x:260,y:3}],
+    [{x:60,y:21,kind:'crate'},{x:130,y:10,kind:'barrel'},{x:220,y:8,kind:'crate'}],
+    'High bridge long wall-ride — thrust the gap.',
+    [{x:100,y:24}]));
 
   // 7 Volcano Ring — corkscrew + loop
   LEVELS.push(L('Volcano Ring','volcano',
@@ -379,7 +390,8 @@ const LEVELS = [];
     ],
     [{x:45,y:16},{x:115,y:14},{x:140,y:16},{x:175,y:36},{x:220,y:10},{x:270,y:3}],
     [{x:50,y:2,kind:'barrel'},{x:110,y:11,kind:'crate'},{x:200,y:2,kind:'barrel'}],
-    'Mega jump into corkscrew + ring of fire.'));
+    'Mega jump into corkscrew + ring of fire.',
+    [{x:130,y:14}]));
 
   // 8 Paradise Finale
   LEVELS.push(L('Paradise Finale','paradise',
@@ -388,13 +400,15 @@ const LEVELS = [];
            corkscrew(44, 2, 38, 3.0, 1.2, 40),
            ramp(82,2,22,12),
            loop(128, 16, 14, -0.1, Math.PI*2-0.1, 48), flat(142,0,8),
-           wallRide(150,0,36,9,1,30), ramp(186,4,16,8), flat(202,12,4)),
-      join(flat(228,4,14), ramp(242,4,20,10), flat(262,14,4)),
-      join(flat(288,6,22), down(310,6,20,8), hump(330,0,24,7), flat(354,0,50))
+           wallRide(150,0,68,9,1,48), ramp(218,4,16,8), flat(234,12,4)),
+      join(flat(260,4,14), ramp(274,4,20,10), flat(294,14,4)),
+      join(flat(320,6,22), down(342,6,20,8), hump(362,0,24,7), flat(386,0,50))
     ],
-    [{x:30,y:6},{x:60,y:6},{x:100,y:12},{x:128,y:30},{x:170,y:10},{x:250,y:10},{x:300,y:10},{x:370,y:3}],
-    [{x:40,y:1,kind:'barrel'},{x:90,y:4,kind:'crate'},{x:160,y:2,kind:'barrel'},{x:240,y:5,kind:'crate'},{x:340,y:1,kind:'barrel'}],
-    'Everything — corkscrew, wall-ride, flips. Chase 3 stars!'));
+    [{x:30,y:6},{x:60,y:6},{x:100,y:12},{x:128,y:30},{x:180,y:10},{x:280,y:10},{x:330,y:10},{x:400,y:3}],
+    [{x:40,y:1,kind:'barrel'},{x:90,y:4,kind:'crate'},{x:165,y:2,kind:'cone'},{x:200,y:5,kind:'tire'},{x:270,y:5,kind:'crate'},{x:370,y:1,kind:'barrel'}],
+    'Everything — corkscrew, long wall-ride, flips. Chase 3 stars!',
+    [{x:175,y:8}],
+    [{x:50,y:1},{x:300,y:7}]));
 })();
 
 /* ===== Three.js setup ===== */
@@ -726,20 +740,31 @@ function buildTrackMeshes(framesData, theme){
   decorGroup.add(arch);
 }
 
+function nearestFrameToXY(framesData, x, y){
+  let best=framesData.frames[0], bd=1e9;
+  for(const f of framesData.frames){
+    const d=Math.abs(f.pos.x-x)+Math.abs(f.pos.y-(y||0))*0.5;
+    if(d<bd){ bd=d; best=f; }
+  }
+  return best;
+}
+
 function buildPickups(level, framesData){
   clearGroup(pickupGroup);
   const starMat = new THREE.MeshStandardMaterial({ color:0xffd76a, emissive:0xffaa20, emissiveIntensity:0.8, metalness:0.4, roughness:0.3 });
   const barrelMat = new THREE.MeshStandardMaterial({ color:0xc03018, emissive:0x801000, emissiveIntensity:0.35, metalness:0.3, roughness:0.55 });
   const crateMat = new THREE.MeshStandardMaterial({ color:0xc8a050, emissive:0x403010, emissiveIntensity:0.15, metalness:0.15, roughness:0.7 });
   const stripeMat = new THREE.MeshStandardMaterial({ color:0xffe040, emissive:0xaa8000, emissiveIntensity:0.4, metalness:0.2, roughness:0.5 });
+  const coneMat = new THREE.MeshStandardMaterial({ color:0xff6a18, emissive:0xaa3000, emissiveIntensity:0.45, metalness:0.15, roughness:0.55 });
+  const coneStripe = new THREE.MeshStandardMaterial({ color:0xffffff, emissive:0x666666, emissiveIntensity:0.2, metalness:0.1, roughness:0.6 });
+  const tireMat = new THREE.MeshStandardMaterial({ color:0x1a1a1e, emissive:0x050508, emissiveIntensity:0.15, metalness:0.05, roughness:0.92 });
+  const tireRim = new THREE.MeshStandardMaterial({ color:0xc0c4cc, emissive:0x303038, emissiveIntensity:0.2, metalness:0.7, roughness:0.35 });
+  const cpMat = new THREE.MeshStandardMaterial({ color:0x40e8ff, emissive:0x20c0ff, emissiveIntensity:1.1, metalness:0.3, roughness:0.25, transparent:true, opacity:0.85, side:THREE.DoubleSide });
+  const boostMat = new THREE.MeshStandardMaterial({ color:0xffe040, emissive:0xffaa00, emissiveIntensity:1.2, metalness:0.35, roughness:0.3, transparent:true, opacity:0.9 });
 
   level._starMeshes = [];
   for(const s of level.stars){
-    let best=framesData.frames[0], bd=1e9;
-    for(const f of framesData.frames){
-      const d=Math.abs(f.pos.x-s.x)+Math.abs(f.pos.y-(s.y||0));
-      if(d<bd){ bd=d; best=f; }
-    }
+    const best=nearestFrameToXY(framesData, s.x, s.y);
     const star = new THREE.Mesh(new THREE.OctahedronGeometry(0.55,0), starMat);
     const yOff = (s.y!=null ? (s.y - best.pos.y) : 2.2);
     star.position.copy(best.pos).add(best.normal.clone().multiplyScalar(Math.max(1.5, yOff*0.15+1.8)));
@@ -750,11 +775,7 @@ function buildPickups(level, framesData){
 
   level._smashMeshes = [];
   for(const sm of (level.smashables||[])){
-    let best=framesData.frames[0], bd=1e9;
-    for(const f of framesData.frames){
-      const d=Math.abs(f.pos.x-sm.x)+Math.abs(f.pos.y-(sm.y||0))*0.5;
-      if(d<bd){ bd=d; best=f; }
-    }
+    const best=nearestFrameToXY(framesData, sm.x, sm.y);
     const kind = sm.kind || 'barrel';
     let mesh;
     if(kind==='crate'){
@@ -763,6 +784,22 @@ function buildPickups(level, framesData){
       box.castShadow=true; mesh.add(box);
       const band = new THREE.Mesh(new THREE.BoxGeometry(1.35,0.15,1.35), stripeMat);
       band.position.y=0.15; mesh.add(band);
+    } else if(kind==='cone'){
+      mesh = new THREE.Group();
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(0.55,1.35,10), coneMat);
+      cone.castShadow=true; cone.position.y=0.1; mesh.add(cone);
+      const stripe = new THREE.Mesh(new THREE.TorusGeometry(0.38,0.05,6,14), coneStripe);
+      stripe.rotation.x=Math.PI/2; stripe.position.y=0.35; mesh.add(stripe);
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(0.62,0.62,0.12,12), coneStripe);
+      base.position.y=-0.55; mesh.add(base);
+    } else if(kind==='tire'){
+      mesh = new THREE.Group();
+      for(let i=0;i<3;i++){
+        const tire = new THREE.Mesh(new THREE.TorusGeometry(0.55,0.22,8,16), tireMat);
+        tire.rotation.x=Math.PI/2; tire.position.y=-0.35+i*0.48; tire.castShadow=true; mesh.add(tire);
+        const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.28,0.28,0.1,12), tireRim);
+        rim.rotation.x=Math.PI/2; rim.position.y=tire.position.y; mesh.add(rim);
+      }
     } else {
       mesh = new THREE.Group();
       const cyl = new THREE.Mesh(new THREE.CylinderGeometry(0.55,0.55,1.35,12), barrelMat);
@@ -778,9 +815,47 @@ function buildPickups(level, framesData){
     if(sm.y != null && Math.abs(sm.y - best.pos.y) > 6){
       mesh.position.set(sm.x, sm.y, side * 2.0);
     }
-    mesh.userData = { kind:'smash', smashed:false, type:kind, r:1.15 };
+    mesh.userData = { kind:'smash', smashed:false, type:kind, r: kind==='tire'?1.35:1.15 };
     pickupGroup.add(mesh);
     level._smashMeshes.push(mesh);
+  }
+
+  // Checkpoint glowing gate rings (~mid-track)
+  level._cpMeshes = [];
+  (level.checkpoints||[]).forEach((cp, idx)=>{
+    const best=nearestFrameToXY(framesData, cp.x, cp.y);
+    const gate = new THREE.Group();
+    const torus = new THREE.Mesh(new THREE.TorusGeometry(2.6, 0.14, 10, 36), cpMat);
+    torus.rotation.y = Math.PI/2;
+    gate.add(torus);
+    const inner = new THREE.Mesh(new THREE.TorusGeometry(2.15, 0.06, 8, 28),
+      new THREE.MeshStandardMaterial({ color:0xffffff, emissive:0x80ffff, emissiveIntensity:0.9, transparent:true, opacity:0.55 }));
+    inner.rotation.y = Math.PI/2; gate.add(inner);
+    gate.position.copy(best.pos).add(best.normal.clone().multiplyScalar(2.4));
+    gate.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(best.tangent, best.normal, best.binormal));
+    gate.userData = {
+      kind:'checkpoint', taken:false, idx,
+      s: best.s, segIndex: best.seg!=null?best.seg:0, fuelFloor:0.45
+    };
+    pickupGroup.add(gate);
+    level._cpMeshes.push(gate);
+  });
+
+  // Ground boost pads
+  level._boostMeshes = [];
+  for(const bp of (level.boostPads||[])){
+    const best=nearestFrameToXY(framesData, bp.x, bp.y);
+    const pad = new THREE.Group();
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.12, 1.8), boostMat);
+    pad.add(plate);
+    const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.45, 0.9, 3),
+      new THREE.MeshStandardMaterial({ color:0xffffff, emissive:0xffee88, emissiveIntensity:0.8 }));
+    arrow.rotation.z = -Math.PI/2; arrow.position.set(0.35, 0.18, 0); pad.add(arrow);
+    pad.position.copy(best.pos).add(best.normal.clone().multiplyScalar(0.18));
+    pad.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(best.tangent, best.normal, best.binormal));
+    pad.userData = { kind:'boost', cool:0, s:best.s, segIndex:best.seg!=null?best.seg:0 };
+    pickupGroup.add(pad);
+    level._boostMeshes.push(pad);
   }
 }
 
@@ -789,11 +864,12 @@ const state = {
   mode:'title', // title|select|play|pause|grade|fail
   levelIndex:0, endless:false,
   score:0, mult:1, combo:0, comboTimer:0,
-  fuel:1, starsGot:0, starsTotal:0, smashes:0,
+  fuel:1, starsGot:0, starsTotal:0, smashes:0, checkpointsGot:0, boostsGot:0,
   flips:0, frontflips:0, backflips:0, airTimeTotal:0, cleanLands:0, thrustStyle:0,
   shake:0, fovPunch:0, squash:0, grade:'☆☆☆', starGrade:0,
   framesData:null, level:null,
   chunks:[], // endless
+  lastCheckpoint:null, // {s, segIndex, fuelFloor, levelIndex}
 };
 
 const car = {
@@ -817,14 +893,23 @@ function applyTheme(key){
   return th;
 }
 
-function startLevel(idx, endless=false){
+function startLevel(idx, endless=false, fromCheckpoint=false){
+  const keepCp = fromCheckpoint && state.lastCheckpoint && state.lastCheckpoint.levelIndex===idx && !endless
+    ? Object.assign({}, state.lastCheckpoint) : null;
   state.endless = endless;
   state.levelIndex = idx;
   state.mode = 'play';
-  state.score=0; state.mult=1; state.combo=0; state.comboTimer=0;
-  state.fuel=1; state.starsGot=0; state.smashes=0;
-  state.flips=0; state.frontflips=0; state.backflips=0; state.airTimeTotal=0;
-  state.cleanLands=0; state.thrustStyle=0; state.shake=0; state.fovPunch=0; state.squash=0;
+  if(!keepCp){
+    state.score=0; state.mult=1; state.combo=0; state.comboTimer=0;
+    state.fuel=1; state.starsGot=0; state.smashes=0; state.checkpointsGot=0; state.boostsGot=0;
+    state.flips=0; state.frontflips=0; state.backflips=0; state.airTimeTotal=0;
+    state.cleanLands=0; state.thrustStyle=0;
+    state.lastCheckpoint=null;
+  } else {
+    state.mult=1; state.combo=0; state.comboTimer=0;
+    state.fuel=Math.max(keepCp.fuelFloor||0.45, state.fuel||0.45);
+  }
+  state.shake=0; state.fovPunch=0; state.squash=0;
   state.grade='☆☆☆'; state.starGrade=0; state.chunks=[];
   particles.length=0;
 
@@ -841,11 +926,24 @@ function startLevel(idx, endless=false){
   buildTrackMeshes(state.framesData, th);
   buildPickups(level, state.framesData);
 
-  car.s=0.5; car.segIndex=0; car.grounded=true; car.speed=8; car.pitch=0; car.pitchVel=0; car.airTime=0; car.flipAcc=0; car.airGrace=0;
-  const fr = sampleFrames(state.framesData, car.s);
+  // Mark prior checkpoints as collected when respawning past them
+  if(keepCp){
+    for(const gate of (level._cpMeshes||[])){
+      if(gate.userData.s <= keepCp.s + 0.5){
+        gate.userData.taken=true; gate.visible=false;
+      }
+    }
+  }
+
+  car.s = keepCp ? keepCp.s : 0.5;
+  car.segIndex = keepCp ? (keepCp.segIndex||0) : 0;
+  car.grounded=true; car.speed= keepCp?16:8; car.pitch=0; car.pitchVel=0; car.airTime=0; car.flipAcc=0; car.airGrace=0;
+  const fr = sampleSegment(state.framesData.segs[car.segIndex]||state.framesData.segs[0], car.s)
+    || sampleFrames(state.framesData, car.s);
   car.pos.copy(fr.pos).add(fr.normal.clone().multiplyScalar(0.95));
   car.vel.set(0,0,0);
   orientCar(fr, 0);
+  if(keepCp) state.lastCheckpoint = keepCp;
 
   showPlayUI(true);
   hideOverlay();
@@ -863,17 +961,18 @@ function makeEndlessChunk(n){
     flat(x0+64,0,12),
   ];
   if(n%3===0) pieces.push(corkscrew(x0+76, 2, 36, 2.8, 1.0, 32));
-  else if(n%3===1) pieces.push(wallRide(x0+76, 0, 36, 7, 1, 28));
+  else if(n%3===1) pieces.push(wallRide(x0+76, 0, 64, 7, 1, 44));
   else pieces.push(hump(x0+76,0,28,8+n%3*2));
   if(n%2===1) pieces.push(loop(x0+140, 14, 12, -0.2, Math.PI*2-0.2, 36));
   else pieces.push(flat(x0+118,0,30));
   pieces.push(flat(x0+155,0,35));
   const wp = join(...pieces);
-  const stars=[], smashables=[];
+  const stars=[], smashables=[], checkpoints=[], boostPads=[];
   for(let i=0;i<4;i++) stars.push({x:30+i*30, y:8});
   if(n>0) smashables.push({x:55, y:2, kind: n%2?'barrel':'crate'});
-  if(n>1) smashables.push({x:95, y:2, kind:'barrel'});
-  return L('Endless '+ (n+1), theme, [wp], stars, smashables, 'How far can you go?');
+  if(n>1) smashables.push({x:95, y:2, kind: n%3===0?'cone':'tire'});
+  if(n>=0){ checkpoints.push({x:80, y:4}); boostPads.push({x:40, y:1}); }
+  return L('Endless '+ (n+1), theme, [wp], stars, smashables, 'How far can you go?', checkpoints, boostPads);
 }
 
 function orientCar(fr, pitch){
@@ -894,7 +993,7 @@ function orientCar(fr, pitch){
 function addScore(pts, label, cls){
   const gained = Math.floor(pts * state.mult);
   state.score += gained;
-  if(label) popup(label, cls || (/FLIP/.test(label)?'flip':(/SMASH|BOOM/.test(label)?'smash':'combo')));
+  if(label) popup(label, cls || (/FLIP/.test(label)?'flip':(/SMASH|BOOM|CRUNCH/.test(label)?'smash':(/CHECKPOINT/.test(label)?'checkpoint':(/BOOST/.test(label)?'boost':'combo')))));
   if(state.comboTimer>0){ state.combo++; state.mult = Math.min(8, 1+Math.floor(state.combo/2)); }
   else { state.combo=1; state.mult=1; }
   state.comboTimer = 1.8;
@@ -967,7 +1066,7 @@ function showTitle(){
   camState.look.copy(car.pos).add(new THREE.Vector3(4,1,0));
   const card=document.getElementById('card');
   card.innerHTML = '<h1>Roadster Stunt Paradise</h1>'+
-    '<p class="sub">Gas · Brake · Lean · Flip · Smash. Closer to Stunt Paradise every day.</p>'+
+    '<p class="sub">Gas · Brake · Lean · Flip · Smash · Checkpoints · Boost. Closer every day.</p>'+
     '<div class="btnRow"><button class="menu gold" id="btnPlay">PLAY</button>'+
     '<button class="menu secondary" id="btnLevels">LEVELS</button>'+
     '<button class="menu secondary" id="btnEndless">ENDLESS</button></div>'+
@@ -1022,7 +1121,7 @@ function failRun(reason){
     '<div class="btnRow"><button class="menu gold" id="btnRetry">RETRY</button>'+
     '<button class="menu secondary" id="btnQuit2">MENU</button></div>';
   showOverlay();
-  document.getElementById('btnRetry').onclick=()=>{ audio.ui(); startLevel(state.levelIndex, state.endless); };
+  document.getElementById('btnRetry').onclick=()=>{ audio.ui(); startLevel(state.levelIndex, state.endless, !!state.lastCheckpoint); };
   document.getElementById('btnQuit2').onclick=()=>{ audio.ui(); showTitle(); };
 }
 
@@ -1312,10 +1411,65 @@ function physicsStep(dt){
       sm.userData.smashed=true; sm.visible=false;
       state.smashes++;
       smashBurst(sm.position, sm.userData.type);
-      addScore(sm.userData.type==='crate'?120:180, sm.userData.type==='crate'?'SMASH!':'BOOM!', 'smash');
+      const t=sm.userData.type;
+      const pts = t==='crate'?120 : t==='cone'?140 : t==='tire'?200 : 180;
+      const lab = t==='crate'?'SMASH!' : t==='cone'?'CRUNCH!' : t==='tire'?'BOOM!' : 'BOOM!';
+      addScore(pts, lab, 'smash');
       audio.smash(); haptic(22);
       state.shake = Math.max(state.shake, 0.48);
       state.fovPunch = Math.min(1, state.fovPunch + 0.55);
+    }
+  }
+
+  // Checkpoint rings
+  for(const gate of (state.level._cpMeshes||[])){
+    if(gate.userData.taken) continue;
+    gate.rotation.z += dt*1.2;
+    if(gate.position.distanceTo(car.pos) < 3.4){
+      gate.userData.taken=true;
+      // Dim but leave a faint marker
+      gate.traverse(o=>{ if(o.material){ o.material = o.material.clone(); o.material.opacity=0.25; o.material.emissiveIntensity=0.2; }});
+      state.checkpointsGot++;
+      state.lastCheckpoint = {
+        s: gate.userData.s,
+        segIndex: gate.userData.segIndex||0,
+        fuelFloor: Math.max(0.45, state.fuel*0.85),
+        levelIndex: state.levelIndex
+      };
+      state.fuel = Math.min(1, state.fuel + 0.18);
+      addScore(250, 'CHECKPOINT!', 'checkpoint');
+      audio.checkpoint(); haptic(18);
+      state.fovPunch = Math.min(1, state.fovPunch + 0.7);
+      state.shake = Math.max(state.shake, 0.22);
+    }
+  }
+
+  // Ground boost pads
+  for(const pad of (state.level._boostMeshes||[])){
+    if(pad.userData.cool > 0){
+      pad.userData.cool -= dt;
+      pad.visible = pad.userData.cool <= 0;
+      if(pad.userData.cool <= 0){
+        pad.traverse(o=>{ if(o.material && o.material.emissiveIntensity!=null) o.material.emissiveIntensity=1.2; });
+      }
+      continue;
+    }
+    pad.children[0] && (pad.children[0].material.emissiveIntensity = 0.9 + Math.sin(performance.now()/180)*0.35);
+    if(car.grounded && pad.position.distanceTo(car.pos) < 2.4){
+      pad.userData.cool = 4.5; // brief deactivate
+      pad.visible = false;
+      state.boostsGot++;
+      car.speed = Math.min(MAX_SPEED * 1.12, Math.max(car.speed, MAX_SPEED * 0.92) + 10);
+      state.fovPunch = Math.min(1, state.fovPunch + 0.95);
+      state.shake = Math.max(state.shake, 0.18);
+      addScore(80, 'BOOST!', 'boost');
+      audio.boost(); haptic(14);
+      // speed-line juice burst
+      for(let i=0;i<18;i++){
+        spawnParticle(car.pos.x, car.pos.y+0.4, car.pos.z,
+          (Math.random()-0.5)*4, Math.random()*2, (Math.random()-0.5)*4,
+          0.25+Math.random()*0.3, 1, 0.85+Math.random()*0.15, 0.2);
+      }
     }
   }
 
@@ -1361,7 +1515,11 @@ function emitThrust(fr){
   }
 }
 function smashBurst(pos, kind){
-  const n = kind==='crate' ? 28 : 36;
+  const n = kind==='crate' ? 28 : kind==='tire' ? 40 : 36;
+  let r=1,g=0.35,b=0.1;
+  if(kind==='crate'){ r=0.9; g=0.7; b=0.3; }
+  else if(kind==='cone'){ r=1.0; g=0.45; b=0.1; }
+  else if(kind==='tire'){ r=0.25; g=0.25; b=0.28; }
   for(let i=0;i<n;i++){
     const speed = 8+Math.random()*18;
     const ang = Math.random()*Math.PI*2;
@@ -1371,9 +1529,7 @@ function smashBurst(pos, kind){
       Math.sin(elev)*speed + 4,
       Math.sin(ang)*Math.cos(elev)*speed,
       0.4+Math.random()*0.45,
-      kind==='crate' ? 0.9 : 1.0,
-      kind==='crate' ? 0.7 : 0.35+Math.random()*0.3,
-      kind==='crate' ? 0.3 : 0.1);
+      r, g+Math.random()*0.15, b);
   }
 }
 function landBurst(pos){
@@ -1490,7 +1646,7 @@ requestAnimationFrame(frame);
 
 // Expose for smoke tests
 window.__RSP = {
-  version:4, levels:LEVELS.length, startLevel, showTitle, showSelect, state, car,
+  version:5, levels:LEVELS.length, startLevel, showTitle, showSelect, state, car,
   getScore:()=>state.score, getMode:()=>state.mode, getStars:()=>state.starGrade, input
 };
 </script>
