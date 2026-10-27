@@ -97,7 +97,7 @@ button.menu.gold{background:linear-gradient(180deg,#ffd76a,#e09020);color:#1a100
 <script type="module">
 import * as THREE from 'three';
 
-const STORE_KEY = 'rsp.v7.scores';
+const STORE_KEY = 'rsp.v8.scores';
 function loadScores(){
   try{ const r = localStorage.getItem(STORE_KEY); return r ? JSON.parse(r) : {levels:{}, endless:0}; }
   catch(e){ return {levels:{}, endless:0}; }
@@ -1023,7 +1023,7 @@ function applyTheme(key){
 }
 
 function startLevel(idx, endless=false, fromCheckpoint=false){
-  state.jumps = 0;
+  state.jumps = 0; if(typeof _cv!=="undefined") _cv.init=false;
   const keepCp = fromCheckpoint && state.lastCheckpoint && state.lastCheckpoint.levelIndex===idx && !endless
     ? Object.assign({}, state.lastCheckpoint) : null;
   state.endless = endless;
@@ -1144,19 +1144,23 @@ function addScore(pts, label, cls){
   punchCombo();
   updateHUD();
 }
-function popup(text, cls){
-  const d=document.createElement('div');
-  d.className='popup'+(cls?(' '+cls):'');
-  d.textContent=text;
-  document.body.appendChild(d);
-  setTimeout(()=>d.remove(), 950);
+const _pop = { el:null, last:'', n:1, t:0 };
+function popup(text, cls){ // v8: single reused popup; repeats combine ("BACKFLIP! ×3")
+  if(!_pop.el){ _pop.el=document.createElement('div'); document.body.appendChild(_pop.el); }
+  const now=performance.now();
+  if(text===_pop.last && now-_pop.t<1100) _pop.n++; else _pop.n=1;
+  _pop.last=text; _pop.t=now;
+  const el=_pop.el;
+  el.className='popup'+(cls?(' '+cls):'');
+  el.textContent = _pop.n>1 ? text+' ×'+_pop.n : text;
+  el.style.animation='none'; requestAnimationFrame(()=>{ el.style.animation=''; });
 }
 function punchCombo(){
   const el=document.getElementById('combo');
   if(state.combo>=2){
     el.textContent='COMBO ×'+state.mult;
     el.style.opacity='1';
-    el.classList.remove('punch'); void el.offsetWidth; el.classList.add('punch');
+    el.classList.remove('punch'); requestAnimationFrame(()=>el.classList.add('punch')); // v8: no forced reflow
   } else el.style.opacity='0';
 }
 function starString(n){
@@ -1478,11 +1482,11 @@ function physicsStep(dt){
       if(dir < 0){ state.backflips++; addScore(280, 'BACKFLIP!', 'flip'); }
       else { state.frontflips++; addScore(280, 'FRONTFLIP!', 'flip'); }
       audio.flip(); haptic(12);
-      state.shake = Math.max(state.shake, 0.28);
-      state.fovPunch = Math.min(1, state.fovPunch + 0.35);
+      state.shake = Math.max(state.shake, 0.1);
+      state.fovPunch = Math.min(0.6, state.fovPunch + 0.12);
     }
-    if(car.airTime > 1.2 && Math.floor(car.airTime*10)%12===0){
-      addScore(15, 'AIR!', 'combo');
+    if(car.airTime > 1.2 && car.airTime - (car.lastAirBonus||0) >= 1.2){ car.lastAirBonus = car.airTime;
+      addScore(15, null, 'combo');
     }
 
     car.vel.y -= GRAV * dt;
@@ -1765,64 +1769,46 @@ function landBurst(pos){
 }
 
 /* Camera — cinematic third-person, always frames the Roadster */
+// v8: smooth stable chase cam — basis from the TRACK (never car pitch), damped, frame-rate independent,
+// zero allocations per frame, smooth shake (no per-frame random jitter = no flicker).
+const _cv = { back:new THREE.Vector3(1,0,0).negate(), up:new THREE.Vector3(0,1,0), side:new THREE.Vector3(0,0,1),
+  tb:new THREE.Vector3(), tu:new THREE.Vector3(), ts:new THREE.Vector3(), tp:new THREE.Vector3(), lt:new THREE.Vector3(),
+  W:new THREE.Vector3(0,1,0), roll:0, fov:60, t:0, init:false };
+function damp(rate, dt){ return 1 - Math.exp(-rate*dt); }
 function updateCamera(dt){
-  if(!state.framesData) return;
+  if(!state.framesData || state.mode!=='play' && state.mode!=='grade' && state.mode!=='fail' && state.mode!=='pause') return;
+  if(dt<=0) return;
   const fr = car.grounded
     ? sampleSegment(state.framesData.segs[car.segIndex]||state.framesData.segs[0], car.s)
     : nearestFrame(car.pos);
-
-  // Basis from car orientation when airborne, track when grounded
-  let back, up, side;
-  if(car.grounded){
-    back = fr.tangent.clone().multiplyScalar(-1);
-    up = fr.normal.clone();
-    side = fr.binormal.clone();
-  } else {
-    const e = new THREE.Euler().setFromQuaternion(car.quat);
-    back = new THREE.Vector3(-1,0,0).applyQuaternion(car.quat);
-    up = new THREE.Vector3(0,1,0).applyQuaternion(car.quat);
-    side = new THREE.Vector3(0,0,1).applyQuaternion(car.quat);
-    // blend up toward world-up so camera doesn't go wild mid-flip
-    up.lerp(new THREE.Vector3(0,1,0), 0.55).normalize();
-    back.normalize();
-  }
-
+  const pos = carVisual.group.position; // interpolated render position
+  _cv.tb.copy(fr.tangent).multiplyScalar(-1);
+  _cv.tu.copy(fr.normal);
+  if(!car.grounded){ _cv.tu.lerp(_cv.W, 0.6); } // stable horizon in the air
+  _cv.tu.normalize(); _cv.ts.copy(fr.binormal);
+  const kb = _cv.init ? damp(car.grounded?6:3, dt) : 1;
+  _cv.back.lerp(_cv.tb, kb).normalize(); _cv.up.lerp(_cv.tu, kb).normalize(); _cv.side.lerp(_cv.ts, kb).normalize();
   const dist = 7.2 + Math.min(2.8, Math.abs(car.speed) * 0.04);
   const height = 2.8 + (car.grounded ? 0 : 1.1);
-  const targetPos = car.pos.clone()
-    .add(back.clone().multiplyScalar(dist))
-    .add(up.clone().multiplyScalar(height))
-    .add(side.clone().multiplyScalar(0.35));
-  // Never let camera sink below ground-ish
-  if(targetPos.y < car.pos.y - 2) targetPos.y = car.pos.y + 2;
-
-  const lag = car.grounded ? 0.004 : 0.012;
-  camState.pos.lerp(targetPos, 1 - Math.pow(lag, dt));
-  const lookTarget = car.pos.clone()
-    .add(back.clone().multiplyScalar(-3.8))
-    .add(up.clone().multiplyScalar(0.55));
-  camState.look.lerp(lookTarget, 1 - Math.pow(0.002, dt));
-
-  let shakeX=0, shakeY=0;
-  if(state.shake>0){
-    shakeX = (Math.random()-0.5)*state.shake*1.0;
-    shakeY = (Math.random()-0.5)*state.shake*1.0;
-  }
+  _cv.tp.copy(pos).addScaledVector(_cv.back, dist).addScaledVector(_cv.up, height).addScaledVector(_cv.side, 0.35);
+  if(_cv.tp.y < pos.y - 2) _cv.tp.y = pos.y + 2;
+  _cv.lt.copy(pos).addScaledVector(_cv.back, -3.8).addScaledVector(_cv.up, 0.55);
+  if(!_cv.init){ camState.pos.copy(_cv.tp); camState.look.copy(_cv.lt); _cv.init=true; }
+  camState.pos.lerp(_cv.tp, damp(car.grounded?5.5:4, dt));
+  camState.look.lerp(_cv.lt, damp(9, dt));
+  _cv.t += dt;
+  const sh = Math.min(car.grounded?0.3:0.12, state.shake||0); // capped, smooth sine shake
   camera.position.copy(camState.pos);
-  camera.position.x += shakeX; camera.position.y += shakeY;
+  camera.position.x += Math.sin(_cv.t*31)*sh*0.5; camera.position.y += Math.sin(_cv.t*23+1.3)*sh*0.5;
+  camera.up.copy(_cv.up);
   camera.lookAt(camState.look);
-
-  // mild roll on big jumps
-  const roll = THREE.MathUtils.clamp(-car.pitch * 0.1, -0.18, 0.18);
-  if(!car.grounded) camera.rotateZ(roll);
-
-  const baseFov = 52;
-  camera.fov = baseFov + state.fovPunch * 14 + Math.min(7, Math.abs(car.speed) * 0.1);
-  camera.updateProjectionMatrix();
-
-  const sl = document.getElementById('speedLines');
-  sl.style.opacity = String(Math.min(0.55, state.fovPunch * 0.6 + Math.abs(car.speed) / 130));
+  const fovT = 52 + Math.min(0.6, state.fovPunch) * 9 + Math.min(7, Math.abs(car.speed) * 0.1);
+  _cv.fov += (fovT - _cv.fov) * damp(6, dt);
+  if(Math.abs(camera.fov - _cv.fov) > 0.01){ camera.fov = _cv.fov; camera.updateProjectionMatrix(); }
+  const op = Math.min(0.45, state.fovPunch * 0.4 + Math.abs(car.speed) / 140).toFixed(2);
+  if(_cv.op !== op){ _cv.op = op; speedLinesEl.style.opacity = op; }
 }
+const speedLinesEl = document.getElementById('speedLines');
 
 function onResize(){
   const w=window.innerWidth, h=window.innerHeight;
@@ -1835,10 +1821,16 @@ onResize();
 
 /* Main loop */
 let acc=0, last=performance.now();
+const _prevPos = new THREE.Vector3(), _prevQuat = new THREE.Quaternion();
 function frame(now){
   const raw=Math.min(0.05, (now-last)/1000); last=now;
   acc+=raw;
-  while(acc>=DT){ physicsStep(DT); acc-=DT; }
+  while(acc>=DT){ _prevPos.copy(car.pos); _prevQuat.copy(car.quat); physicsStep(DT); acc-=DT; }
+  if(state.mode==='play'){ // v8: interpolate render between physics ticks (120Hz ProMotion judder fix)
+    const a = acc/DT;
+    if(_prevPos.distanceToSquared(car.pos) < 25){ carVisual.group.position.lerpVectors(_prevPos, car.pos, a); carVisual.group.quaternion.slerpQuaternions(_prevQuat, car.quat, a); }
+    else { carVisual.group.position.copy(car.pos); carVisual.group.quaternion.copy(car.quat); }
+  }
   updateParticles(raw);
   updateCamera(raw);
   // title idle spin
@@ -1870,8 +1862,9 @@ requestAnimationFrame(frame);
 
 // Expose for smoke tests
 window.__RSP = {
-  version:7, levels:LEVELS.length, startLevel, showTitle, showSelect, state, car,
+  version:8, levels:LEVELS.length, startLevel, showTitle, showSelect, state, car,
   getScore:()=>state.score, getMode:()=>state.mode, getStars:()=>state.starGrade, input,
+  cam:()=>({x:camera.position.x,y:camera.position.y,z:camera.position.z,qx:camera.quaternion.x,qy:camera.quaternion.y,qz:camera.quaternion.z,qw:camera.quaternion.w}),
   lips:()=>state.framesData.segs.map((sg,i,all)=>(sg.lips||[]).concat(i<all.length-1?[sg.length-0.3]:[])),
   probe:()=>{ const n=nearestFrame(car.pos); return {g:car.grounded, seg:car.segIndex, s:car.s, x:car.pos.x, y:car.pos.y,
      h:car.pos.clone().sub(n.pos).dot(n.normal)-0.95, nx:n.pos.x, ny:n.pos.y, nny:n.normal.y, lip:!!car.lipLaunch, mode:state.mode, why:state.failReason, dbg:state.failDbg, jumps:state.jumps||0, speed:car.speed}; }
