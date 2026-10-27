@@ -46,6 +46,7 @@ canvas#c{display:block;width:100%;height:100%;touch-action:none}
 .popup.smash{color:#ff8040;font-size:clamp(26px,5.5vw,44px);text-shadow:0 0 20px rgba(255,100,40,.9),0 2px 12px rgba(0,0,0,.8)}
 .popup.checkpoint{color:#7cf7ff;font-size:clamp(24px,5vw,40px);text-shadow:0 0 22px rgba(80,240,255,.95),0 2px 12px rgba(0,0,0,.8)}
 .popup.boost{color:#ffee66;font-size:clamp(26px,5.5vw,44px);text-shadow:0 0 22px rgba(255,220,60,.95),0 2px 12px rgba(0,0,0,.8)}
+.popup.pop{color:#ff9ad4;font-size:clamp(24px,5vw,40px);text-shadow:0 0 20px rgba(255,140,200,.9),0 2px 12px rgba(0,0,0,.8)}
 .popup.combo{color:#9cf}
 @keyframes pop{0%{opacity:0;transform:translate(-50%,-40%) scale(.6)}15%{opacity:1;transform:translate(-50%,-50%) scale(1.15)}100%{opacity:0;transform:translate(-50%,-80%) scale(1)}}
 #overlay{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;background:rgba(4,8,20,.55);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);padding:env(safe-area-inset-top,16px) env(safe-area-inset-right,16px) env(safe-area-inset-bottom,16px) env(safe-area-inset-left,16px)}
@@ -96,7 +97,7 @@ button.menu.gold{background:linear-gradient(180deg,#ffd76a,#e09020);color:#1a100
 <script type="module">
 import * as THREE from 'three';
 
-const STORE_KEY = 'rsp.v5.scores';
+const STORE_KEY = 'rsp.v6.scores';
 function loadScores(){
   try{ const r = localStorage.getItem(STORE_KEY); return r ? JSON.parse(r) : {levels:{}, endless:0}; }
   catch(e){ return {levels:{}, endless:0}; }
@@ -154,6 +155,7 @@ const audio = (()=>{
     crash(){ noise(0.35,0.28); tone(80,0.3,'sawtooth',0.2,-50); },
     smash(){ noise(0.22,0.3); tone(160,0.12,'sawtooth',0.18,-80); tone(60,0.2,'square',0.12); },
     checkpoint(){ tone(640,0.08,'sine',0.1); tone(960,0.12,'triangle',0.1); tone(1280,0.1,'sine',0.07); },
+    softpop(){ tone(520,0.06,'sine',0.08); tone(780,0.1,'triangle',0.07); noise(0.08,0.08); },
     win(){ tone(523,0.12,'triangle',0.12); setTimeout(()=>tone(659,0.12,'triangle',0.12),90); setTimeout(()=>tone(784,0.22,'triangle',0.14),180); },
     tick(){ tone(180,0.03,'square',0.04); }
   };
@@ -249,13 +251,13 @@ const THEMES = {
 };
 
 /* ===== Level builders ===== */
-function L(name, theme, segments, stars, smashables, tip, checkpoints, boostPads){
+function L(name, theme, segments, stars, smashables, tip, checkpoints, boostPads, routes, props){
   // segments: array of waypoint arrays (gaps between segments = air launches)
   if(segments.length && segments[0] && segments[0].isVector3){
     segments = [segments]; // allow single path
   }
   return { name, theme, segments, stars:stars||[], smashables:smashables||[], tip:tip||'',
-    checkpoints:checkpoints||[], boostPads:boostPads||[] };
+    checkpoints:checkpoints||[], boostPads:boostPads||[], routes:routes||[], props:props||[] };
 }
 function P(x,y,z=0){ return new THREE.Vector3(x,y,z); }
 function flat(x0,y0,len,n=6,z=0){
@@ -322,8 +324,10 @@ const LEVELS = [];
     [{x:50,y:10},{x:120,y:6},{x:175,y:12},{x:230,y:3}],
     [{x:90,y:1,kind:'barrel'},{x:130,y:3,kind:'cone'},{x:155,y:3,kind:'crate'},{x:200,y:1,kind:'tire'}],
     'GAS left · BRAKE below · LEAN BACK / FWD on the right. Smash + boost pads!',
-    [{x:110,y:4}],
-    [{x:70,y:1},{x:220,y:1}]));
+    [{x:70,y:4},{x:110,y:4},{x:195,y:4}],
+    [{x:70,y:1},{x:220,y:1}],
+    [{x:48,y:14},{x:168,y:16},{x:176,y:18}],
+    [{x:95,y:4,kind:'balloon'},{x:150,y:5,kind:'billboard'},{x:205,y:3,kind:'spinner'}]));
 
   // 2 Beach Hop
   LEVELS.push(L('Beach Hop','beach',
@@ -332,7 +336,11 @@ const LEVELS = [];
           hump(162,0,32,9), flat(194,0,40))],
     [{x:42,y:10},{x:108,y:14},{x:135,y:12},{x:178,y:8},{x:220,y:3}],
     [{x:85,y:1,kind:'barrel'},{x:160,y:2,kind:'crate'},{x:200,y:1,kind:'barrel'}],
-    'Lean BACK (A) for backflips · Lean FWD (D) for frontflips.'));
+    'Lean BACK (A) for backflips · Lean FWD (D) for frontflips.',
+    [],
+    [],
+    [{x:100,y:16},{x:128,y:14}],
+    [{x:80,y:3,kind:'balloon'},{x:170,y:4,kind:'spinner'}]));
 
   // 3 Industrial Gap — wall-ride + smashables
   LEVELS.push(L('Industrial Gap','industrial',
@@ -344,8 +352,10 @@ const LEVELS = [];
     [{x:40,y:10},{x:70,y:16},{x:160,y:10},{x:190,y:16},{x:280,y:3}],
     [{x:35,y:1,kind:'barrel'},{x:100,y:8,kind:'crate'},{x:120,y:9,kind:'cone'},{x:185,y:8,kind:'tire'},{x:240,y:2,kind:'crate'}],
     'Bank the long wall-ride, then THRUST the gap. Smash everything!',
-    [{x:85,y:14}],
-    [{x:40,y:1}]));
+    [{x:55,y:12},{x:100,y:14},{x:200,y:12}],
+    [{x:40,y:1}],
+    [{x:65,y:18},{x:185,y:18}],
+    [{x:90,y:12,kind:'billboard'},{x:170,y:10,kind:'balloon'},{x:250,y:4,kind:'spinner'}]));
 
   // 4 Cyber Loop + corkscrew
   LEVELS.push(L('Cyber Loop','cyber',
@@ -356,8 +366,10 @@ const LEVELS = [];
     [{x:40,y:8},{x:78,y:34},{x:78,y:2},{x:130,y:5},{x:180,y:10},{x:230,y:3}],
     [{x:100,y:1,kind:'barrel'},{x:160,y:2,kind:'crate'}],
     'Loop then corkscrew — hit the boost pad!',
-    [{x:155,y:3}],
-    [{x:50,y:1},{x:200,y:1}]));
+    [{x:55,y:6},{x:155,y:3},{x:195,y:4}],
+    [{x:50,y:1},{x:200,y:1}],
+    [{x:70,y:28},{x:78,y:36},{x:125,y:8}],
+    [{x:105,y:4,kind:'spinner'},{x:170,y:4,kind:'billboard'},{x:210,y:3,kind:'balloon'}]));
 
   // 5 Candy Waves
   LEVELS.push(L('Candy Waves','candy',
@@ -366,7 +378,11 @@ const LEVELS = [];
           hump(126,0,36,11), flat(162,0,45))],
     [{x:36,y:10},{x:72,y:12},{x:108,y:14},{x:144,y:10},{x:190,y:3}],
     [{x:50,y:2,kind:'barrel'},{x:100,y:3,kind:'crate'},{x:140,y:2,kind:'barrel'}],
-    'Ride the waves — clean landings score big.'));
+    'Ride the waves — clean landings score big.',
+    [],
+    [],
+    [{x:70,y:14},{x:110,y:16}],
+    [{x:60,y:6,kind:'balloon'},{x:120,y:8,kind:'balloon'},{x:150,y:4,kind:'spinner'}]));
 
   // 6 Ice Bridge — wall-ride
   LEVELS.push(L('Ice Bridge','ice',
@@ -377,7 +393,10 @@ const LEVELS = [];
     [{x:42,y:14},{x:72,y:24},{x:110,y:24},{x:190,y:20},{x:260,y:3}],
     [{x:60,y:21,kind:'crate'},{x:130,y:10,kind:'barrel'},{x:220,y:8,kind:'crate'}],
     'High bridge long wall-ride — thrust the gap.',
-    [{x:100,y:24}]));
+    [{x:50,y:18},{x:100,y:24},{x:195,y:18}],
+    [],
+    [{x:70,y:26},{x:185,y:22}],
+    [{x:80,y:22,kind:'billboard'},{x:140,y:22,kind:'balloon'},{x:230,y:4,kind:'spinner'}]));
 
   // 7 Volcano Ring — corkscrew + loop
   LEVELS.push(L('Volcano Ring','volcano',
@@ -391,7 +410,10 @@ const LEVELS = [];
     [{x:45,y:16},{x:115,y:14},{x:140,y:16},{x:175,y:36},{x:220,y:10},{x:270,y:3}],
     [{x:50,y:2,kind:'barrel'},{x:110,y:11,kind:'crate'},{x:200,y:2,kind:'barrel'}],
     'Mega jump into corkscrew + ring of fire.',
-    [{x:130,y:14}]));
+    [{x:50,y:12},{x:130,y:14},{x:210,y:6}],
+    [],
+    [{x:110,y:16},{x:145,y:18},{x:175,y:34}],
+    [{x:60,y:6,kind:'spinner'},{x:150,y:14,kind:'billboard'},{x:230,y:4,kind:'balloon'}]));
 
   // 8 Paradise Finale
   LEVELS.push(L('Paradise Finale','paradise',
@@ -407,8 +429,10 @@ const LEVELS = [];
     [{x:30,y:6},{x:60,y:6},{x:100,y:12},{x:128,y:30},{x:180,y:10},{x:280,y:10},{x:330,y:10},{x:400,y:3}],
     [{x:40,y:1,kind:'barrel'},{x:90,y:4,kind:'crate'},{x:165,y:2,kind:'cone'},{x:200,y:5,kind:'tire'},{x:270,y:5,kind:'crate'},{x:370,y:1,kind:'barrel'}],
     'Everything — corkscrew, long wall-ride, flips. Chase 3 stars!',
-    [{x:175,y:8}],
-    [{x:50,y:1},{x:300,y:7}]));
+    [{x:70,y:6},{x:175,y:8},{x:285,y:8}],
+    [{x:50,y:1},{x:300,y:7}],
+    [{x:55,y:8},{x:120,y:28},{x:270,y:12}],
+    [{x:100,y:6,kind:'balloon'},{x:190,y:8,kind:'billboard'},{x:340,y:6,kind:'spinner'},{x:380,y:4,kind:'balloon'}]));
 })();
 
 /* ===== Three.js setup ===== */
@@ -857,6 +881,90 @@ function buildPickups(level, framesData){
     pickupGroup.add(pad);
     level._boostMeshes.push(pad);
   }
+
+  // Mid-air star route markers (chevrons / rings) — visual only
+  level._routeMeshes = [];
+  const routeMat = new THREE.MeshStandardMaterial({ color:0x80ffe0, emissive:0x40ffc0, emissiveIntensity:1.15, metalness:0.25, roughness:0.3, transparent:true, opacity:0.88 });
+  const routes = (level.routes && level.routes.length) ? level.routes.slice() : [];
+  // Auto-add a cue near elevated stars if designer left routes empty-ish
+  if(routes.length < 2){
+    for(const s of level.stars){
+      if(s.y != null && s.y >= 10) routes.push({x:s.x - 8, y:s.y - 2});
+    }
+  }
+  for(const r of routes){
+    const best=nearestFrameToXY(framesData, r.x, r.y||0);
+    const g = new THREE.Group();
+    // chevron (arrow) pointing roughly along track
+    const chev = new THREE.Mesh(new THREE.ConeGeometry(0.55, 1.15, 3), routeMat);
+    chev.rotation.z = -Math.PI/2;
+    g.add(chev);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.85, 0.07, 8, 20),
+      new THREE.MeshStandardMaterial({ color:0xffffff, emissive:0x80ffe8, emissiveIntensity:0.7, transparent:true, opacity:0.55 }));
+    ring.rotation.y = Math.PI/2; g.add(ring);
+    const yOff = (r.y!=null ? Math.max(2.5, r.y - best.pos.y) : 4.5);
+    g.position.copy(best.pos).add(best.normal.clone().multiplyScalar(Math.min(8, yOff*0.35 + 3.2)));
+    // Prefer absolute height for air paths when designer gave y
+    if(r.y != null) g.position.y = Math.max(g.position.y, r.y);
+    g.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(best.tangent, best.normal, best.binormal));
+    g.userData = { kind:'route', base:g.position.clone(), phase:Math.random()*Math.PI*2 };
+    pickupGroup.add(g);
+    level._routeMeshes.push(g);
+  }
+
+  // Kid-safe moving spectacle props — soft bounce / score pop, never lethal
+  level._propMeshes = [];
+  const balloonMat = new THREE.MeshStandardMaterial({ color:0xff6ab0, emissive:0xff3080, emissiveIntensity:0.55, metalness:0.15, roughness:0.35 });
+  const boardMat = new THREE.MeshStandardMaterial({ color:0x40c8ff, emissive:0x2080c0, emissiveIntensity:0.45, metalness:0.2, roughness:0.45 });
+  const spinMat = new THREE.MeshStandardMaterial({ color:0xffe080, emissive:0xffaa40, emissiveIntensity:0.7, metalness:0.35, roughness:0.3, transparent:true, opacity:0.9 });
+  for(const pr of (level.props||[])){
+    const best=nearestFrameToXY(framesData, pr.x, pr.y||0);
+    const kind = pr.kind || 'balloon';
+    const g = new THREE.Group();
+    if(kind==='billboard'){
+      const board = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.4, 0.12), boardMat);
+      g.add(board);
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.1,2.2,8),
+        new THREE.MeshStandardMaterial({ color:0x888890, metalness:0.5, roughness:0.4 }));
+      pole.position.y = -1.6; g.add(pole);
+    } else if(kind==='spinner'){
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(1.1, 0.12, 8, 24), spinMat);
+      g.add(ring);
+      const hub = new THREE.Mesh(new THREE.SphereGeometry(0.28,10,10), spinMat);
+      g.add(hub);
+      for(let i=0;i<4;i++){
+        const arm = new THREE.Mesh(new THREE.BoxGeometry(1.6,0.1,0.1), spinMat);
+        arm.rotation.z = i*Math.PI/2; g.add(arm);
+      }
+    } else {
+      // balloon
+      const ball = new THREE.Mesh(new THREE.SphereGeometry(0.75,14,12), balloonMat.clone());
+      ball.material.color.setHSL((level._propMeshes.length*0.17)%1, 0.75, 0.55);
+      ball.material.emissive.setHSL((level._propMeshes.length*0.17)%1, 0.7, 0.35);
+      g.add(ball);
+      const knot = new THREE.Mesh(new THREE.ConeGeometry(0.18,0.35,6), balloonMat);
+      knot.position.y = -0.85; knot.rotation.x = Math.PI; g.add(knot);
+      const string = new THREE.Mesh(new THREE.CylinderGeometry(0.025,0.025,1.6,6),
+        new THREE.MeshBasicMaterial({ color:0xffffff }));
+      string.position.y = -1.55; g.add(string);
+    }
+    const side = (level._propMeshes.length%2)?-1:1;
+    // Keep props near the ribbon so kids brush them while driving (soft only)
+    g.position.copy(best.pos)
+      .add(best.normal.clone().multiplyScalar(kind==='billboard'?1.35:1.9))
+      .add(best.binormal.clone().multiplyScalar(side * (TRACK_W * (kind==='spinner'?0.22:0.28))));
+    if(pr.y != null && Math.abs(pr.y - best.pos.y) > 4){
+      g.position.y = pr.y;
+    }
+    g.userData = {
+      kind:'prop', type:kind, hit:false, cool:0,
+      base:g.position.clone(), phase:Math.random()*Math.PI*2,
+      spinSpeed: kind==='spinner'?1.4 : kind==='billboard'?0.55 : 0.35,
+      bounceR: kind==='spinner'?2.0 : kind==='billboard'?1.9 : 1.7
+    };
+    pickupGroup.add(g);
+    level._propMeshes.push(g);
+  }
 }
 
 /* Game state */
@@ -864,7 +972,7 @@ const state = {
   mode:'title', // title|select|play|pause|grade|fail
   levelIndex:0, endless:false,
   score:0, mult:1, combo:0, comboTimer:0,
-  fuel:1, starsGot:0, starsTotal:0, smashes:0, checkpointsGot:0, boostsGot:0,
+  fuel:1, starsGot:0, starsTotal:0, smashes:0, checkpointsGot:0, boostsGot:0, propsGot:0,
   flips:0, frontflips:0, backflips:0, airTimeTotal:0, cleanLands:0, thrustStyle:0,
   shake:0, fovPunch:0, squash:0, grade:'☆☆☆', starGrade:0,
   framesData:null, level:null,
@@ -901,7 +1009,7 @@ function startLevel(idx, endless=false, fromCheckpoint=false){
   state.mode = 'play';
   if(!keepCp){
     state.score=0; state.mult=1; state.combo=0; state.comboTimer=0;
-    state.fuel=1; state.starsGot=0; state.smashes=0; state.checkpointsGot=0; state.boostsGot=0;
+    state.fuel=1; state.starsGot=0; state.smashes=0; state.checkpointsGot=0; state.boostsGot=0; state.propsGot=0;
     state.flips=0; state.frontflips=0; state.backflips=0; state.airTimeTotal=0;
     state.cleanLands=0; state.thrustStyle=0;
     state.lastCheckpoint=null;
@@ -955,24 +1063,38 @@ function makeEndlessChunk(n){
   const theme = keys[n % keys.length];
   const x0 = 0;
   const pieces = [
-    flat(x0,0,20),
-    ramp(x0+20,0,24+n%3*4,12+n%4*2),
-    down(x0+44,12+n%4*2,20,12+n%4*2),
-    flat(x0+64,0,12),
+    flat(x0,0,18),
+    ramp(x0+18,0,22+n%3*4,11+n%4*2),
+    down(x0+40,11+n%4*2,18,11+n%4*2),
+    flat(x0+58,0,10),
   ];
-  if(n%3===0) pieces.push(corkscrew(x0+76, 2, 36, 2.8, 1.0, 32));
-  else if(n%3===1) pieces.push(wallRide(x0+76, 0, 64, 7, 1, 44));
-  else pieces.push(hump(x0+76,0,28,8+n%3*2));
-  if(n%2===1) pieces.push(loop(x0+140, 14, 12, -0.2, Math.PI*2-0.2, 36));
-  else pieces.push(flat(x0+118,0,30));
-  pieces.push(flat(x0+155,0,35));
+  const variant = n % 5;
+  if(variant===0) pieces.push(corkscrew(x0+68, 2, 38, 2.8, 1.0+ (n%2)*0.25, 34));
+  else if(variant===1) pieces.push(wallRide(x0+68, 0, 68, 7+(n%3), (n%2)?1:-1, 46));
+  else if(variant===2){ pieces.push(hump(x0+68,0,26,8+n%3*2)); pieces.push(hump(x0+94,0,24,10)); }
+  else if(variant===3) pieces.push(loop(x0+90, 14, 12+(n%2), -0.2, Math.PI*2-0.2, 36));
+  else { pieces.push(corkscrew(x0+68, 2, 28, 2.4, 1.0, 28)); pieces.push(wallRide(x0+100, 2, 48, 6, 1, 32)); }
+  if(n%2===0) pieces.push(flat(x0+140,0,28));
+  else pieces.push(ramp(x0+140,0,20,8), down(x0+160,8,16,8));
+  pieces.push(flat(x0+175,0,40));
   const wp = join(...pieces);
-  const stars=[], smashables=[], checkpoints=[], boostPads=[];
-  for(let i=0;i<4;i++) stars.push({x:30+i*30, y:8});
+  const stars=[], smashables=[], checkpoints=[], boostPads=[], routes=[], props=[];
+  for(let i=0;i<4;i++) stars.push({x:28+i*32, y:8+(i%2)*4});
   if(n>0) smashables.push({x:55, y:2, kind: n%2?'barrel':'crate'});
-  if(n>1) smashables.push({x:95, y:2, kind: n%3===0?'cone':'tire'});
-  if(n>=0){ checkpoints.push({x:80, y:4}); boostPads.push({x:40, y:1}); }
-  return L('Endless '+ (n+1), theme, [wp], stars, smashables, 'How far can you go?', checkpoints, boostPads);
+  if(n>1) smashables.push({x:100, y:2, kind: n%3===0?'cone':'tire'});
+  if(n>2) smashables.push({x:150, y:2, kind: n%2?'cone':'barrel'});
+  // multi-checkpoint chain in endless
+  checkpoints.push({x:50, y:4});
+  checkpoints.push({x:120, y:5});
+  if(n%2===0) checkpoints.push({x:165, y:4});
+  boostPads.push({x:35, y:1});
+  if(n%2) boostPads.push({x:145, y:1});
+  routes.push({x:70, y:12}, {x:110, y:14});
+  const kinds=['balloon','billboard','spinner'];
+  props.push({x:60, y:5, kind:kinds[n%3]});
+  props.push({x:130, y:6, kind:kinds[(n+1)%3]});
+  if(n%2===0) props.push({x:160, y:4, kind:'balloon'});
+  return L('Endless '+ (n+1), theme, [wp], stars, smashables, 'How far can you go?', checkpoints, boostPads, routes, props);
 }
 
 function orientCar(fr, pitch){
@@ -993,7 +1115,7 @@ function orientCar(fr, pitch){
 function addScore(pts, label, cls){
   const gained = Math.floor(pts * state.mult);
   state.score += gained;
-  if(label) popup(label, cls || (/FLIP/.test(label)?'flip':(/SMASH|BOOM|CRUNCH/.test(label)?'smash':(/CHECKPOINT/.test(label)?'checkpoint':(/BOOST/.test(label)?'boost':'combo')))));
+  if(label) popup(label, cls || (/FLIP/.test(label)?'flip':(/SMASH|BOOM|CRUNCH/.test(label)?'smash':(/CHECKPOINT/.test(label)?'checkpoint':(/BOOST/.test(label)?'boost':(/POP|BOUNCE/.test(label)?'pop':'combo'))))));
   if(state.comboTimer>0){ state.combo++; state.mult = Math.min(8, 1+Math.floor(state.combo/2)); }
   else { state.combo=1; state.mult=1; }
   state.comboTimer = 1.8;
@@ -1066,7 +1188,7 @@ function showTitle(){
   camState.look.copy(car.pos).add(new THREE.Vector3(4,1,0));
   const card=document.getElementById('card');
   card.innerHTML = '<h1>Roadster Stunt Paradise</h1>'+
-    '<p class="sub">Gas · Brake · Lean · Flip · Smash · Checkpoints · Boost. Closer every day.</p>'+
+    '<p class="sub">Gas · Brake · Lean · Flip · Smash · Checkpoint chains · Air routes · Spectacle. Closer every day.</p>'+
     '<div class="btnRow"><button class="menu gold" id="btnPlay">PLAY</button>'+
     '<button class="menu secondary" id="btnLevels">LEVELS</button>'+
     '<button class="menu secondary" id="btnEndless">ENDLESS</button></div>'+
@@ -1167,8 +1289,8 @@ const REVERSE_ACCEL = 22;
 const MAX_SPEED = 48;
 const MAX_REVERSE = -14;
 const THRUST_FORCE = 52;
-const LEAN_TORQUE = 5.2;   // weighty — not instant snap
-const AIR_DAMP = 0.55;     // less damping = more inertia
+const LEAN_TORQUE = 5.85;  // snappier lean (v6 polish)
+const AIR_DAMP = 0.48;     // slightly less damp = crisper flips
 const FUEL_BURN = 0.38;
 const FUEL_REGEN = 0.16;
 const DT = 1/60;
@@ -1232,7 +1354,7 @@ function physicsStep(dt){
     state.fovPunch = Math.max(0, state.fovPunch - dt*2.5);
   }
 
-  state.squash = Math.max(0, state.squash - dt*3.5);
+  state.squash = Math.max(0, state.squash - dt*4.4);
 
   if(car.grounded){
     if(input.gas) car.speed = Math.min(MAX_SPEED, car.speed + ACCEL*dt);
@@ -1368,13 +1490,13 @@ function physicsStep(dt){
         car.pitch=0; car.pitchVel=0; car.flipAcc=0;
         car.pos.copy(landFr.pos).add(landFr.normal.clone().multiplyScalar(0.95));
         const clean = impact < 16 && Math.abs(landPitch)<0.5;
-        state.squash = 0.55 + Math.min(0.35, impact/40);
-        state.fovPunch = Math.min(1, state.fovPunch + 0.4 + impact*0.01);
+        state.squash = (clean ? 0.78 : 0.58) + Math.min(0.38, impact/36);
+        state.fovPunch = Math.min(1, state.fovPunch + (clean ? 0.62 : 0.42) + impact*0.012);
         if(clean){
           state.cleanLands++;
           addScore(90 + Math.floor(car.airTime*70), 'CLEAN!', 'combo');
           audio.land(); haptic(14);
-          state.shake = Math.max(state.shake, 0.35 + Math.min(0.25, impact/40));
+          state.shake = Math.max(state.shake, 0.38 + Math.min(0.28, impact/40));
         } else {
           audio.land();
           state.shake = Math.max(state.shake, 0.28);
@@ -1469,6 +1591,55 @@ function physicsStep(dt){
         spawnParticle(car.pos.x, car.pos.y+0.4, car.pos.z,
           (Math.random()-0.5)*4, Math.random()*2, (Math.random()-0.5)*4,
           0.25+Math.random()*0.3, 1, 0.85+Math.random()*0.15, 0.2);
+      }
+    }
+  }
+
+  // Mid-air route markers — bob + spin (non-lethal visual cues)
+  for(const rm of (state.level._routeMeshes||[])){
+    const t = performance.now()/1000 + (rm.userData.phase||0);
+    rm.position.y = rm.userData.base.y + Math.sin(t*2.2)*0.35;
+    rm.rotation.y += dt*1.6;
+  }
+
+  // Kid-safe spectacle props — animate; soft bounce / score pop only
+  for(const pr of (state.level._propMeshes||[])){
+    const ud = pr.userData;
+    const t = performance.now()/1000 + (ud.phase||0);
+    if(ud.type==='balloon'){
+      pr.position.y = ud.base.y + Math.sin(t*1.6)*0.55;
+      pr.position.x = ud.base.x + Math.sin(t*0.7)*0.25;
+      pr.rotation.y += dt*ud.spinSpeed;
+    } else if(ud.type==='billboard'){
+      pr.rotation.y = Math.sin(t*ud.spinSpeed)*0.85;
+      pr.position.copy(ud.base);
+    } else {
+      pr.rotation.x += dt*ud.spinSpeed;
+      pr.rotation.z += dt*ud.spinSpeed*0.7;
+      pr.position.y = ud.base.y + Math.sin(t*1.1)*0.2;
+    }
+    if(ud.cool > 0){ ud.cool -= dt; continue; }
+    if(pr.position.distanceTo(car.pos) < (ud.bounceR||1.3)){
+      ud.cool = 1.1;
+      state.propsGot = (state.propsGot||0)+1;
+      // Soft nudge — never fail
+      if(!car.grounded){
+        car.vel.y = Math.max(car.vel.y, 6);
+        car.vel.add(new THREE.Vector3(
+          (Math.random()-0.5)*4, 2, (Math.random()-0.5)*4
+        ));
+      } else {
+        car.speed = Math.min(MAX_SPEED, car.speed + 3);
+      }
+      const lab = ud.type==='balloon' ? 'POP!' : (ud.type==='spinner' ? 'SPIN!' : 'BOUNCE!');
+      addScore(ud.type==='balloon'?60:45, lab, 'pop');
+      audio.softpop(); haptic(8);
+      state.fovPunch = Math.min(1, state.fovPunch + 0.25);
+      // confetti puff
+      for(let i=0;i<12;i++){
+        spawnParticle(pr.position.x, pr.position.y, pr.position.z,
+          (Math.random()-0.5)*8, Math.random()*8, (Math.random()-0.5)*8,
+          0.35, 1, 0.5+Math.random()*0.5, 0.75+Math.random()*0.25);
       }
     }
   }
@@ -1629,7 +1800,7 @@ function frame(now){
   // Soft landing squash
   const bs = carVisual.baseScale || 0.85;
   const sq = state.squash || 0;
-  carVisual.group.scale.set(bs*(1+sq*0.12), bs*(1-sq*0.28), bs*(1+sq*0.12));
+  carVisual.group.scale.set(bs*(1+sq*0.16), bs*(1-sq*0.34), bs*(1+sq*0.16));
   for(const n of carVisual.nozzles){
     n.material.emissiveIntensity = (input.thrust && state.fuel>0 && state.mode==='play') ? 1.2 : 0.25;
   }
@@ -1646,7 +1817,7 @@ requestAnimationFrame(frame);
 
 // Expose for smoke tests
 window.__RSP = {
-  version:5, levels:LEVELS.length, startLevel, showTitle, showSelect, state, car,
+  version:6, levels:LEVELS.length, startLevel, showTitle, showSelect, state, car,
   getScore:()=>state.score, getMode:()=>state.mode, getStars:()=>state.starGrade, input
 };
 </script>

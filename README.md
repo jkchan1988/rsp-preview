@@ -1,9 +1,9 @@
-# rsp-preview
+# Roadster Stunt Paradise — preview
 
-Unpublished **preview** of [Roadster Stunt Paradise](https://github.com/jkchan1988) for family playtest.
+Unpublished daily preview build for family playtest.
 
-**Current:** **v5** (2026-10-26 Asia/Hong_Kong) — checkpoint rings, longer wall-rides, cone/tire smash variety, ground boost pads. Not a formal library publish.
+- **Current:** v6 (2026-10-27 Asia/Hong_Kong)
+- Live: https://jkchan1988.github.io/rsp-preview/
+- Formal library publish is separate — this repo is preview only.
 
-Live: https://jkchan1988.github.io/rsp-preview/
-
-Kid-safe: no chat, ads, accounts, purchases, or data collection.
+Kid-safe. No accounts, ads, or data collection. Scores stay in `localStorage` (`rsp.v6.scores`).
