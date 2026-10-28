@@ -26,7 +26,8 @@ canvas#c{display:block;width:100%;height:100%;touch-action:none}
 #fuelBar{height:12px;border-radius:8px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);overflow:hidden}
 #fuelFill{height:100%;width:100%;background:linear-gradient(90deg,#4af,#8ff);border-radius:8px}
 #fuelLabel{text-align:center;font-size:11px;font-weight:700;letter-spacing:.08em;opacity:.8;margin-top:2px}
-#pauseBtn{pointer-events:auto;width:48px;height:48px;border-radius:14px;border:1px solid rgba(255,255,255,.2);background:rgba(0,0,0,.45);color:#fff;font-size:22px;cursor:pointer}
+#pauseBtn,#musicBtn{pointer-events:auto;width:48px;height:48px;border-radius:14px;border:1px solid rgba(255,255,255,.2);background:rgba(0,0,0,.45);color:#fff;font-size:22px;cursor:pointer}
+#musicBtn.off{opacity:.45;text-decoration:line-through}
 #controls{display:none;position:fixed;inset:0;z-index:5;pointer-events:none}
 .pad{position:absolute;pointer-events:auto;border-radius:18px;border:2px solid rgba(255,255,255,.22);background:rgba(0,0,0,.28);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);color:rgba(255,255,255,.7);font-weight:900;font-size:12px;letter-spacing:.06em;display:flex;align-items:center;justify-content:center;text-align:center;line-height:1.15;opacity:.55;transition:opacity .12s, background .12s, border-color .12s, transform .08s}
 .pad.on{opacity:1;background:rgba(40,120,200,.45);border-color:rgba(140,220,255,.85);transform:scale(.97);color:#fff}
@@ -82,6 +83,7 @@ button.menu.gold{background:linear-gradient(180deg,#ffd76a,#e09020);color:#1a100
   <div class="panel" id="scorePanel">0</div>
   <div class="panel" id="multPanel">×1</div>
   <div class="panel" id="gradePanel">☆☆☆</div>
+  <button id="musicBtn" aria-label="Music on or off" aria-pressed="true">♪</button>
   <button id="pauseBtn" aria-label="Pause">⏸</button>
 </div>
 <div id="fuelWrap"><div id="fuelBar"><div id="fuelFill"></div></div><div id="fuelLabel">ROCKET</div></div>
@@ -113,7 +115,14 @@ let scores = loadScores();
 const audio = (()=>{
   let ctx=null, master=null, pending=[], resumeP=null, muted=false;
   const AC = ()=> window.AudioContext || window.webkitAudioContext;
-  function build(){ if(ctx) return; const C=AC(); if(!C) return; ctx=new C(); master=ctx.createGain(); master.gain.value=0.72; master.connect(ctx.destination); }
+  let comp=null, musBus=null, duckG=null, hatHP=null;
+  function build(){ if(ctx) return; const C=AC(); if(!C) return; ctx=new C(); master=ctx.createGain(); master.gain.value=0.72;
+    // v13 MIX BUS: everything → master → gentle compressor/limiter → speakers (no clipping when a crash, boom and music stack up)
+    comp=ctx.createDynamicsCompressor(); comp.threshold.value=-16; comp.knee.value=10; comp.ratio.value=5; comp.attack.value=0.004; comp.release.value=0.22;
+    master.connect(comp); comp.connect(ctx.destination);
+    // v13 MUSIC BUS: music → duck gain (SFX side-chain) → music gain → master
+    musBus=ctx.createGain(); musBus.gain.value=0; duckG=ctx.createGain(); duckG.gain.value=1; duckG.connect(musBus); musBus.connect(master);
+    hatHP=ctx.createBiquadFilter(); hatHP.type='highpass'; hatHP.frequency.value=7000; hatHP.connect(duckG); }
   function silentUnlock(){ if(!ctx) return; try{ const b=ctx.createBuffer(1,1,22050); const s=ctx.createBufferSource(); s.buffer=b; s.connect(ctx.destination); s.start(0);}catch(e){} }
   function resume(){
     if(!ctx) return Promise.resolve(false);
@@ -140,10 +149,11 @@ const audio = (()=>{
     });
   }
   let noiseBuf=null;
+  function ensureNoise(){ if(!noiseBuf){ const n=Math.floor(ctx.sampleRate*2); noiseBuf=ctx.createBuffer(1,n,ctx.sampleRate); const d=noiseBuf.getChannelData(0); for(let i=0;i<n;i++) d[i]=Math.random()*2-1; } return noiseBuf; } // v13: one buffer shared by SFX, engine roar and hi-hats
   function noise(dur, vol=0.12){
     whenReady(()=>{
       if(muted||!ctx) return;
-      if(!noiseBuf){ const n=Math.floor(ctx.sampleRate*2); noiseBuf=ctx.createBuffer(1,n,ctx.sampleRate); const d=noiseBuf.getChannelData(0); for(let i=0;i<n;i++) d[i]=Math.random()*2-1; } // v10: one shared buffer (was a fresh buffer + Math.random fill per hit)
+      ensureNoise(); // v10: one shared buffer (was a fresh buffer + Math.random fill per hit)
       const t0=ctx.currentTime, s=ctx.createBufferSource(); s.buffer=noiseBuf;
       const g=ctx.createGain(); g.gain.setValueAtTime(vol,t0); g.gain.linearRampToValueAtTime(vol*0.35,t0+dur*0.45); g.gain.linearRampToValueAtTime(0,t0+dur);
       s.connect(g); g.connect(master); s.start(t0, Math.random()*1.2); s.stop(t0+dur+0.03);
@@ -156,8 +166,8 @@ const audio = (()=>{
     const o1=ctx.createOscillator(), o2=ctx.createOscillator(), lp=ctx.createBiquadFilter(), g=ctx.createGain();
     o1.type='sawtooth'; o2.type='square'; o1.frequency.value=55; o2.frequency.value=27.5; lp.type='lowpass'; lp.frequency.value=500; lp.Q.value=4;
     const g2=ctx.createGain(); g2.gain.value=0.45; o1.connect(lp); o2.connect(g2); g2.connect(lp); lp.connect(g); g.gain.value=0; g.connect(master);
-    const n=ctx.sampleRate*2, buf=ctx.createBuffer(1,n,ctx.sampleRate), d=buf.getChannelData(0); for(let i=0;i<n;i++) d[i]=Math.random()*2-1;
-    const rs=ctx.createBufferSource(); rs.buffer=buf; rs.loop=true; const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=700; bp.Q.value=0.7;
+    const rs=ctx.createBufferSource(); rs.buffer=ensureNoise(); // v13: reuse the shared noise buffer (was a second 2 s buffer)
+    rs.loop=true; const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=700; bp.Q.value=0.7;
     const rg=ctx.createGain(); rg.gain.value=0; rs.connect(bp); bp.connect(rg); rg.connect(master);
     o1.start(); o2.start(); rs.start();
     eng={o1,o2,lp,g,rg,bp,lf:0,lg:-1,lr:-1};
@@ -172,12 +182,74 @@ const audio = (()=>{
     if(Math.abs(gv-eng.lg)>0.004){ eng.lg=gv; eng.g.gain.setTargetAtTime(gv,t,0.07); }
     if(Math.abs(rv-eng.lr)>0.004){ eng.lr=rv; eng.rg.gain.setTargetAtTime(rv,t,rocket?0.04:0.12); }
   }
+
+  /* v13 MUSIC: procedural, per-world background loop (no files, no network). A 25 ms look-ahead scheduler queues
+     16th-notes ~120 ms ahead on the audio clock, so timing stays tight even when a frame hitches. Kick + hat + bass + arpeggio,
+     I–V–vi–IV (sunny worlds) or i–VI–III–VII (night/fire/factory worlds). Big SFX duck the music for a moment. */
+  const MUS = {
+    paradise:{bpm:112, root:62, minor:false, lead:'triangle', oct:12, pat:0},
+    beach:   {bpm:118, root:65, minor:false, lead:'triangle', oct:12, pat:1},
+    desert:  {bpm:104, root:57, minor:false, lead:'triangle', oct:12, pat:2},
+    candy:   {bpm:126, root:67, minor:false, lead:'sine',     oct:24, pat:1},
+    ice:     {bpm:100, root:64, minor:false, lead:'sine',     oct:24, pat:3},
+    industrial:{bpm:120,root:57, minor:true,  lead:'square',   oct:12, pat:2},
+    cyber:   {bpm:128, root:59, minor:true,  lead:'square',   oct:12, pat:0},
+    volcano: {bpm:122, root:55, minor:true,  lead:'sawtooth', oct:12, pat:3}
+  };
+  const PROG = { maj:[0,7,9,5], min:[0,8,3,10] };
+  const ARP = [[0,1,2,3,2,1,2,3,0,1,2,3,2,1,2,-1],[0,2,1,3,0,2,1,3,0,-1,2,3,2,-1,1,2],[0,-1,1,2,3,-1,2,1,0,-1,1,2,3,2,1,-1],[0,1,2,-1,3,2,1,-1,0,1,2,3,-1,3,2,1]];
+  let musicOn = true; try{ musicOn = localStorage.getItem('rsp_music') !== '0'; }catch(e){}
+  const mus = { theme:null, cfg:null, step:0, next:0, timer:null, mode:'title', notes:0, lastDuck:0 };
+  const MUS_VOL = { play:0.5, title:0.42, select:0.42, pause:0.16, grade:0, fail:0 };
+  const midiHz = m => 440*Math.pow(2,(m-69)/12);
+  function mNote(t, freq, dur, type, vol, dest){
+    const o=ctx.createOscillator(), g=ctx.createGain(); o.type=type; o.frequency.setValueAtTime(freq,t);
+    g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(vol,t+0.008); g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    o.connect(g); g.connect(dest||duckG); o.start(t); o.stop(t+dur+0.02); mus.notes++;
+  }
+  function mKick(t){ const o=ctx.createOscillator(), g=ctx.createGain(); o.type='sine'; o.frequency.setValueAtTime(130,t); o.frequency.exponentialRampToValueAtTime(42,t+0.12);
+    g.gain.setValueAtTime(0.32,t); g.gain.exponentialRampToValueAtTime(0.0001,t+0.16); o.connect(g); g.connect(duckG); o.start(t); o.stop(t+0.18); mus.notes++; }
+  function mHat(t, v){ const s=ctx.createBufferSource(), g=ctx.createGain(); s.buffer=ensureNoise(); g.gain.setValueAtTime(v,t); g.gain.exponentialRampToValueAtTime(0.0001,t+0.035);
+    s.connect(g); g.connect(hatHP); s.start(t, (mus.step*0.37)%1.5); s.stop(t+0.05); mus.notes++; }
+  function schedStep(t){
+    const c=mus.cfg, st=mus.step%16, bar=Math.floor(mus.step/16)%4, prog=c.minor?PROG.min:PROG.maj;
+    const chordRoot = c.root + prog[bar], third = c.minor ? ([0,3].includes(prog[bar]) ? 3 : 4) : ([0,7,5].includes(prog[bar]) ? 4 : 3);
+    const tones=[0, third, 7, 12], spb=60/c.bpm/4;
+    if(st%4===0) mKick(t);
+    if(st%4===2) mHat(t, 0.09); else if(st%2===1) mHat(t, 0.035);
+    if(st%2===0) mNote(t, midiHz(chordRoot-24 + (st===6||st===14?12:0)), spb*1.7, 'triangle', 0.2);
+    const ai = ARP[c.pat][st]; if(ai>=0 && !(bar===3 && st>=12)) mNote(t, midiHz(chordRoot + c.oct + tones[ai]), spb*1.4, c.lead, c.lead==='square'||c.lead==='sawtooth' ? 0.045 : 0.085);
+    if(st===0) mNote(t, midiHz(chordRoot + tones[1] + 12), spb*14, 'sine', 0.03); // soft pad tone under each bar
+    mus.step++;
+  }
+  function musicPump(){
+    if(!ctx || ctx.state!=='running' || !mus.cfg || !musicOn || muted || MUS_VOL[mus.mode]===0) return; // silent screens schedule nothing
+    const now=ctx.currentTime, spb=60/mus.cfg.bpm/4;
+    if(mus.next < now) mus.next = now + 0.05; // resync after a tab switch / iOS interruption instead of bursting the backlog
+    while(mus.next < now + 0.12){ schedStep(mus.next); mus.next += spb; }
+  }
+  function musicLevel(){ if(!musBus) return; const v = (musicOn && !muted && mus.cfg) ? (MUS_VOL[mus.mode] ?? 0.4) : 0; musBus.gain.setTargetAtTime(v, ctx.currentTime, v<0.05?0.25:0.4); }
+  function music(theme){
+    const cfg = theme && MUS[theme] ? MUS[theme] : null;
+    if(cfg && cfg===mus.cfg) return; // same world: keep the groove going (retries don't restart the song)
+    mus.theme = cfg ? theme : null; mus.cfg = cfg; mus.step = 0; mus.next = 0;
+    if(cfg && !mus.timer) mus.timer = setInterval(musicPump, 25);
+    if(!cfg && mus.timer){ clearInterval(mus.timer); mus.timer=null; }
+    whenReady(()=>{ musicLevel(); musicPump(); });
+  }
+  function musicMode(m){ if(m===mus.mode) return; mus.mode=m; if(ctx && ctx.state==='running') musicLevel(); }
+  function setMusic(on){ musicOn=!!on; try{ localStorage.setItem('rsp_music', musicOn?'1':'0'); }catch(e){} if(ctx && ctx.state==='running'){ musicLevel(); if(musicOn) musicPump(); } }
+  function duck(depth=0.35, hold=0.35){ if(!ctx || !duckG || ctx.state!=='running') return; const t=ctx.currentTime; mus.lastDuck=t;
+    duckG.gain.cancelScheduledValues(t); duckG.gain.setTargetAtTime(depth, t, 0.015); duckG.gain.setTargetAtTime(1, t+hold, 0.3); }
+  function musicState(){ return { on:musicOn, theme:mus.theme, mode:mus.mode, running:!!mus.timer, notes:mus.notes, step:mus.step,
+    bus: musBus ? +musBus.gain.value.toFixed(3) : null, duck: duckG ? +duckG.gain.value.toFixed(3) : null, comp: !!comp, ctx: ctx ? ctx.state : null }; }
   function engineLevel(){ return eng ? {f:+eng.lf.toFixed(1), g:+eng.lg.toFixed(3), r:+eng.lr.toFixed(3)} : null; }
   return {
-    gesture, engine, engineLevel, muted:()=>muted, setMuted(v){ muted=!!v; },
+    gesture, engine, engineLevel, muted:()=>muted, setMuted(v){ muted=!!v; if(ctx && ctx.state==='running') musicLevel(); },
+    music, musicMode, setMusic, musicOn:()=>musicOn, musicState, duck,
     coin(){ tone(1320,0.05,'sine',0.05); tone(1980,0.07,'sine',0.035); },
-    gold(){ tone(784,0.1,'triangle',0.14); setTimeout(()=>tone(1046,0.1,'triangle',0.14),80); setTimeout(()=>tone(1568,0.3,'sine',0.14),160); noise(0.2,0.06); },
-    boom(){ noise(0.55,0.4); tone(70,0.5,'sine',0.3,-40); tone(140,0.25,'sawtooth',0.16,-90); setTimeout(()=>{ tone(900,0.12,'triangle',0.08); tone(1350,0.16,'sine',0.06); },120); },
+    gold(){ duck(0.4,0.5); tone(784,0.1,'triangle',0.14); setTimeout(()=>tone(1046,0.1,'triangle',0.14),80); setTimeout(()=>tone(1568,0.3,'sine',0.14),160); noise(0.2,0.06); },
+    boom(){ duck(0.3,0.45); noise(0.55,0.4); tone(70,0.5,'sine',0.3,-40); tone(140,0.25,'sawtooth',0.16,-90); setTimeout(()=>{ tone(900,0.12,'triangle',0.08); tone(1350,0.16,'sine',0.06); },120); },
     ui(){ tone(660,0.06,'triangle',0.08); },
     fan(){ noise(0.45,0.16); tone(180,0.4,'sine',0.07,260); },
     creak(v=1){ noise(0.25,0.1*v); tone(140,0.3,'sawtooth',0.035*v,70); }, // v12 bridge crack + groan // v11 wind fan whoosh
@@ -186,12 +258,12 @@ const audio = (()=>{
     boost(){ noise(0.15,0.14); tone(140,0.18,'sawtooth',0.12,120); tone(420,0.1,'sine',0.06); },
     flip(){ tone(520,0.08,'square',0.1); tone(780,0.1,'triangle',0.08); },
     star(){ tone(880,0.08,'sine',0.1); tone(1320,0.12,'sine',0.08); },
-    land(k=0.5){ noise(0.12+0.1*k,0.18+0.14*k); tone(70+30*k,0.16+0.08*k,'sine',0.2+0.12*k,-25); tone(220,0.05,'square',0.05); },
-    crash(){ noise(0.6,0.42); tone(60,0.55,'sine',0.32,-30); tone(110,0.35,'sawtooth',0.2,-70); setTimeout(()=>{ noise(0.25,0.2); tone(420,0.08,'square',0.08,-200); },110); setTimeout(()=>tone(300,0.1,'triangle',0.07,-120),260); },
+    land(k=0.5){ if(k>0.55) duck(0.55,0.2); noise(0.12+0.1*k,0.18+0.14*k); tone(70+30*k,0.16+0.08*k,'sine',0.2+0.12*k,-25); tone(220,0.05,'square',0.05); },
+    crash(){ duck(0.25,0.6); noise(0.6,0.42); tone(60,0.55,'sine',0.32,-30); tone(110,0.35,'sawtooth',0.2,-70); setTimeout(()=>{ noise(0.25,0.2); tone(420,0.08,'square',0.08,-200); },110); setTimeout(()=>tone(300,0.1,'triangle',0.07,-120),260); },
     smash(){ noise(0.22,0.3); tone(160,0.12,'sawtooth',0.18,-80); tone(60,0.2,'square',0.12); },
     checkpoint(){ tone(640,0.08,'sine',0.1); tone(960,0.12,'triangle',0.1); tone(1280,0.1,'sine',0.07); },
     softpop(){ tone(520,0.06,'sine',0.08); tone(780,0.1,'triangle',0.07); noise(0.08,0.08); },
-    win(){ tone(523,0.12,'triangle',0.12); setTimeout(()=>tone(659,0.12,'triangle',0.12),90); setTimeout(()=>tone(784,0.22,'triangle',0.14),180); },
+    win(){ duck(0.3,0.9); tone(523,0.12,'triangle',0.12); setTimeout(()=>tone(659,0.12,'triangle',0.12),90); setTimeout(()=>tone(784,0.22,'triangle',0.14),180); },
     tick(){ tone(180,0.03,'square',0.04); }
   };
 })();
@@ -238,6 +310,7 @@ window.addEventListener('keydown', e=>{
   if(e.code==='ArrowDown'||e.code==='KeyS'){ input.brake=true; padBrake.classList.add('on'); e.preventDefault(); }
   if(e.code==='Space'||e.code==='KeyJ'||e.code==='ShiftLeft'||e.code==='ShiftRight'){ e.preventDefault(); if(!input.thrust){ audio.thrust(); haptic(8);} input.thrust=true; btnThrust.classList.add('on'); }
   if(e.code==='KeyP'||e.code==='Escape'){ if(state.mode==='play') togglePause(); }
+  if(e.code==='KeyM' && !e.repeat) toggleMusic(); // v13
 });
 window.addEventListener('keyup', e=>{
   if(e.code==='ArrowLeft'||e.code==='KeyA'){ if(input.lean<0) input.lean=0; padLeanBack.classList.remove('on'); }
@@ -272,6 +345,10 @@ function setTiltEnabled(on){
   } else { input.tiltLean=0; input.tiltOk=false; }
 }
 document.getElementById('tiltToggle').addEventListener('click', ()=>{ audio.gesture(); audio.ui(); setTiltEnabled(!input.tiltEnabled); });
+function syncMusicUI(){ const on=audio.musicOn(); const b=document.getElementById('musicBtn'); if(b){ b.classList.toggle('off',!on); b.setAttribute('aria-pressed', on?'true':'false'); }
+  const t=document.getElementById('btnMusic'); if(t) t.textContent = on ? '♪ MUSIC ON' : '♪ MUSIC OFF'; } // v13
+function toggleMusic(){ audio.gesture(); audio.setMusic(!audio.musicOn()); audio.ui(); syncMusicUI(); }
+document.getElementById('musicBtn').addEventListener('click', toggleMusic);
 document.getElementById('pauseBtn').addEventListener('click', ()=>{ audio.gesture(); if(state.mode==='play') togglePause(); });
 
 /* ===== Themes ===== */
@@ -921,7 +998,7 @@ function buildPickups(level, framesData){
   const coneStripe = new THREE.MeshStandardMaterial({ color:0xffffff, emissive:0x666666, emissiveIntensity:0.2, metalness:0.1, roughness:0.6 });
   const tireMat = new THREE.MeshStandardMaterial({ color:0x1a1a1e, emissive:0x050508, emissiveIntensity:0.15, metalness:0.05, roughness:0.92 });
   const tireRim = new THREE.MeshStandardMaterial({ color:0xc0c4cc, emissive:0x303038, emissiveIntensity:0.2, metalness:0.7, roughness:0.35 });
-  const cpMat = new THREE.MeshStandardMaterial({ color:0x40e8ff, emissive:0x20c0ff, emissiveIntensity:1.1, metalness:0.3, roughness:0.25, transparent:true, opacity:0.85, side:THREE.DoubleSide });
+  const cpMat = new THREE.MeshStandardMaterial({ color:0x40e8ff, emissive:0x20c0ff, emissiveIntensity:1.1, metalness:0.3, roughness:0.25, transparent:true, opacity:0.85, side:THREE.DoubleSide, forceSinglePass:true });
   const boostMat = new THREE.MeshStandardMaterial({ color:0xffe040, emissive:0xffaa00, emissiveIntensity:1.2, metalness:0.35, roughness:0.3, transparent:true, opacity:0.9 });
 
   level._starMeshes = [];
@@ -1123,7 +1200,7 @@ function buildPickups(level, framesData){
 const FAN_H = 10, FAN_W = 3.4;
 const fanHousingMat = new THREE.MeshStandardMaterial({ color:0x4a5668, metalness:0.6, roughness:0.4, emissive:0x10202c, emissiveIntensity:0.3 });
 const fanBladeMat = new THREE.MeshStandardMaterial({ color:0xe8eef6, metalness:0.5, roughness:0.3, emissive:0x406080, emissiveIntensity:0.3 });
-const fanAirMat = new THREE.MeshBasicMaterial({ color:0xbff0ff, transparent:true, opacity:0.12, depthWrite:false, side:THREE.DoubleSide });
+const fanAirMat = new THREE.MeshBasicMaterial({ color:0xbff0ff, transparent:true, opacity:0.12, depthWrite:false, side:THREE.DoubleSide, forceSinglePass:true });
 function buildFans(level, framesData){
   level._fans = [];
   for(const f of (level.fans||[])){
@@ -1397,6 +1474,7 @@ function startLevel(idx, endless=false, fromCheckpoint=false){
   state.level = level; state.padsUsed = new Set(); state.padHits = 0;
   state.starsTotal = level.stars.length;
   const th = applyTheme(level.theme);
+  audio.music(level.theme); // v13: each world has its own tune
   state.framesData = buildFrames(level.segments);
   buildTrackMeshes(state.framesData, th);
   buildPickups(level, state.framesData);
@@ -1420,7 +1498,7 @@ function startLevel(idx, endless=false, fromCheckpoint=false){
   car.lipLaunch=false; car.grounded=true; car.speed= keepCp?16:8; car.pitch=0; car.pitchVel=0; car.airTime=0; car.flipAcc=0; car.airGrace=0;
   const fr = sampleSegment(state.framesData.segs[car.segIndex]||state.framesData.segs[0], car.s)
     || sampleFrames(state.framesData, car.s);
-  car.pos.copy(fr.pos).add(fr.normal.clone().multiplyScalar(RIDE));
+  car.pos.copy(fr.pos).addScaledVector(fr.normal, RIDE);
   car.vel.set(0,0,0);
   orientCar(fr, 0);
   if(keepCp) state.lastCheckpoint = keepCp;
@@ -1557,7 +1635,7 @@ function showOverlay(){ document.getElementById('overlay').classList.remove('hid
 
 function showTitle(){
   state.mode='title'; showPlayUI(false);
-  applyTheme('paradise');
+  applyTheme('paradise'); audio.music('paradise');
   // preview track
   const preview = LEVELS[7];
   state.framesData = buildFrames(preview.segments);
@@ -1565,7 +1643,7 @@ function showTitle(){
   buildPickups(preview, state.framesData);
   car.s = 35; car.segIndex=0;
   const fr=sampleSegment(state.framesData.segs[0], Math.min(35, state.framesData.segs[0].length*0.2));
-  car.pos.copy(fr.pos).add(fr.normal.clone().multiplyScalar(RIDE));
+  car.pos.copy(fr.pos).addScaledVector(fr.normal, RIDE);
   orientCar(fr, 0.15);
   camState.pos.copy(car.pos).add(new THREE.Vector3(-10,5,12));
   camState.look.copy(car.pos).add(new THREE.Vector3(4,1,0));
@@ -1575,10 +1653,12 @@ function showTitle(){
     '<div class="btnRow"><button class="menu gold" id="btnPlay">PLAY</button>'+
     '<button class="menu secondary" id="btnLevels">LEVELS</button>'+
     '<button class="menu secondary" id="btnEndless">ENDLESS</button></div>'+
+    '<div class="btnRow"><button class="menu secondary" id="btnMusic">'+(audio.musicOn()?'♪ MUSIC ON':'♪ MUSIC OFF')+'</button></div>'+
     '<p class="sub" style="margin-top:16px">Best endless: '+(scores.endless||0).toLocaleString()+'</p>';
   showOverlay();
   document.getElementById('btnPlay').onclick=()=>{ audio.gesture(); audio.ui(); startLevel(0); };
   document.getElementById('btnLevels').onclick=()=>{ audio.gesture(); audio.ui(); showSelect(); };
+  document.getElementById('btnMusic').onclick=toggleMusic;
   document.getElementById('btnEndless').onclick=()=>{ audio.gesture(); audio.ui(); startLevel(0,true); };
 }
 
@@ -1740,6 +1820,7 @@ const susp = { cF:SUSP.sag, cR:SUSP.sag, vF:0, vR:0, hF:0, hR:0, loadF:1, loadR:
 const _sF=makeFrame(), _sR=makeFrame(), _sC=makeFrame(), _sA=makeFrame(), _sB=makeFrame(), _sG=makeFrame();
 const _st=new THREE.Vector3(), _sn=new THREE.Vector3(), _sb=new THREE.Vector3(), _sm4=new THREE.Matrix4(), _sv=new THREE.Vector3();
 const _af=new THREE.Vector3(), _ab=new THREE.Vector3(), _au=new THREE.Vector3(), _ar=new THREE.Vector3(), _aq=new THREE.Quaternion();
+const _upDir=new THREE.Vector3(); // v13
 const _thrFr = { pos:null, tangent:null, normal:null, binormal:null };
 function axleLoad(seg, sAx, f, speed){
   sampleInto(seg, sAx-0.7, _sA); sampleInto(seg, sAx+0.7, _sB);
@@ -1847,10 +1928,10 @@ function physicsStep(dt){
       const v = Math.min(car.speed, 32);
       car.grounded = false;
       car.vel.copy(dirF.tangent).multiplyScalar(v * 0.82);
-      car.vel.add(dirF.normal.clone().multiplyScalar(2 + v * 0.05));
+      car.vel.addScaledVector(dirF.normal, 2 + v * 0.05);
       if(car.vel.y < 7) car.vel.y = 7;
       car.pitch = 0; car.pitchVel = lean * 0.35; car.flipAcc = 0;
-      car.pos.copy(lf.pos).add(lf.normal.clone().multiplyScalar(RIDE));
+      car.pos.copy(lf.pos).addScaledVector(lf.normal, RIDE);
       car.airGrace = 0.3; car.lipLaunch = true; if(car.speed > 30 && !(state.slowmoUsedAt>performance.now()-6000)){ state.slowmo = 0.55; state.slowmoUsedAt = performance.now(); }
       orientCar(lf, 0);
       state.jumps = (state.jumps||0) + 1;
@@ -1864,7 +1945,7 @@ function physicsStep(dt){
       const fr = sampleSegment(seg, seg.length);
       const isLast = car.segIndex >= state.framesData.segs.length - 1;
       if(isLast){
-        car.pos.copy(fr.pos).add(fr.normal.clone().multiplyScalar(RIDE));
+        car.pos.copy(fr.pos).addScaledVector(fr.normal, RIDE);
         orientCar(fr, 0);
         winRun(); return;
       }
@@ -1873,11 +1954,11 @@ function physicsStep(dt){
       const launchUp = Math.min(22, 8 + Math.abs(car.speed) * 0.28);
       car.vel.copy(fr.tangent).multiplyScalar(Math.min(38, Math.max(8, car.speed)) * 1.05); // v7: capped so gaps land on the pad
       // Blend track normal with world up so flat lips still get vertical lift
-      const upDir = fr.normal.clone().multiplyScalar(0.65).add(new THREE.Vector3(0, 0.35, 0)).normalize();
+      const upDir = _upDir.copy(fr.normal).multiplyScalar(0.65); upDir.y += 0.35; upDir.normalize();
       car.vel.add(upDir.multiplyScalar(launchUp));
       if(car.vel.y < 6) car.vel.y = 6 + Math.abs(car.speed) * 0.06;
       car.pitch = 0; car.pitchVel = lean * 0.35; car.flipAcc = 0;
-      car.pos.copy(fr.pos).add(fr.normal.clone().multiplyScalar(RIDE));
+      car.pos.copy(fr.pos).addScaledVector(fr.normal, RIDE);
       // Mark that we left this segment — prefer next for landing
       car.airGrace = 0.55; // don't re-land on the lip we just left
       orientCar(fr, 0);
@@ -2014,7 +2095,7 @@ function physicsStep(dt){
         car.vel.set(0,0,0);
         const landPitch = car.pitch;
         car.pitch=0; car.pitchVel=0; car.flipAcc=0;
-        car.pos.copy(landFr.pos).add(landFr.normal.clone().multiplyScalar(RIDE));
+        car.pos.copy(landFr.pos).addScaledVector(landFr.normal, RIDE);
         const clean = impact < 16 && Math.abs(landPitch)<0.5;
         state.squash = (clean ? 0.78 : 0.58) + Math.min(0.38, impact/36); suspKick(impact, landPitch); // v10: springs, not mesh squash
         state.fovPunch = Math.min(1, state.fovPunch + (clean ? 0.62 : 0.42) + impact*0.012);
@@ -2190,7 +2271,7 @@ function physicsStep(dt){
     const level = makeEndlessChunk(n);
     state.level = level; state.padsUsed = new Set(); state.padHits = 0;
     state.starsTotal += level.stars.length;
-    const th = applyTheme(level.theme);
+    const th = applyTheme(level.theme); audio.music(level.theme); // v13: endless zones switch tunes with the world
     state.framesData = buildFrames(level.segments);
     buildTrackMeshes(state.framesData, th);
     buildPickups(level, state.framesData);
@@ -2300,7 +2381,7 @@ onResize();
 
 /* Main loop */
 let acc=0, last=performance.now();
-const _prevPos = new THREE.Vector3(), _prevQuat = new THREE.Quaternion();
+const _prevPos = new THREE.Vector3(), _prevQuat = new THREE.Quaternion(), _titleT = new THREE.Vector3(); // v13: title cam reuses a temp
 function frame(now){
   const raw=Math.min(0.05, (now-last)/1000); last=now;
   if(state.slowmo>0){ state.slowmo-=raw; if(state.slowmo<=0) state.slowmoScale=0.45; } const ts = state.slowmo>0 ? (state.slowmoScale||0.45) : 1;
@@ -2311,14 +2392,15 @@ function frame(now){
     if(_prevPos.distanceToSquared(car.pos) < 25){ carVisual.group.position.lerpVectors(_prevPos, car.pos, a); carVisual.group.quaternion.slerpQuaternions(_prevQuat, car.quat, a); }
     else { carVisual.group.position.copy(car.pos); carVisual.group.quaternion.copy(car.quat); }
   }
+  audio.musicMode(state.mode); // v13: music volume follows the screen (quiet on pause, out on crash/finish)
   updateParticles(raw);
   updateCamera(raw);
   // title idle spin
   if(state.mode==='title' || state.mode==='select'){
     carVisual.group.rotation.y = Math.sin(now/2000)*0.15;
-    const fr=sampleFrames(state.framesData, 50+Math.sin(now/3000)*20);
-    camState.pos.lerp(car.pos.clone().add(new THREE.Vector3(-10,5,12)), 0.03);
-    camState.look.lerp(car.pos.clone().add(new THREE.Vector3(4,1,0)), 0.03);
+    // v13: removed unused per-frame sampleFrames() allocation
+    camState.pos.lerp(_titleT.set(car.pos.x-10,car.pos.y+5,car.pos.z+12), 0.03);
+    camState.look.lerp(_titleT.set(car.pos.x+4,car.pos.y+1,car.pos.z), 0.03);
     carVisual.group.position.copy(car.pos);
     camera.position.copy(camState.pos); camera.lookAt(camState.look);
   }
@@ -2377,12 +2459,12 @@ function perfTick(now){
 ['touchstart','mousedown','keydown'].forEach(ev=>{
   window.addEventListener(ev, ()=>audio.gesture(), {once:false, passive:true});
 });
-showTitle();
+syncMusicUI(); showTitle();
 requestAnimationFrame(frame);
 
 // Expose for smoke tests
 window.__RSP = {
-  version:12, _sample:sampleSegment,
+  version:13, audio, failRun, _sample:sampleSegment, _renderer:renderer, _scene:scene,
   bridge:()=>{ const b=state.level&&state.level._bridge; return b?{n:b.planks.length, x0:+b.x0.toFixed(1), x1:+b.x1.toFixed(1), fallen:b.fallen, cleared:b.cleared, runs:state.bridgeRuns||0}:null; },
   gLean:()=>+(state.gLean||0).toFixed(3),
   fans:()=>({n:(state.level&&state.level._fans||[]).length, hits:state.fanHits||0, peak:+(state.fanPeak||0).toFixed(2)}),
