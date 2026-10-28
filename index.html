@@ -66,6 +66,8 @@ button.menu.gold{background:linear-gradient(180deg,#ffd76a,#e09020);color:#1a100
 .lvlBtn:disabled{opacity:.35}
 .gradeHero{font-size:clamp(48px,11vw,88px);font-weight:900;line-height:1;margin:8px 0 4px;letter-spacing:4px;filter:drop-shadow(0 4px 16px rgba(255,180,40,.45))}
 .oneMore{font-size:clamp(15px,2.8vw,20px);font-weight:800;color:#9cf;margin-top:4px;letter-spacing:.04em}
+#starHud{position:fixed;left:calc(env(safe-area-inset-left,10px) + 12px);top:calc(env(safe-area-inset-top,8px) + 56px);z-index:10;pointer-events:none;font-weight:800;font-size:clamp(12px,2.2vw,16px);background:rgba(0,0,0,.4);border-radius:10px;padding:4px 10px;display:none}
+#starHud .coin{color:#ffd24a}#starHud .gold{color:#ffcf3a;text-shadow:0 0 8px rgba(255,200,40,.9)}
 #speedLines{position:fixed;inset:0;pointer-events:none;z-index:4;opacity:0;background:repeating-linear-gradient(90deg,transparent,transparent 40px,rgba(255,255,255,.04) 40px,rgba(255,255,255,.04) 42px);mix-blend-mode:screen}
 </style>
 <script type="importmap">
@@ -99,7 +101,7 @@ button.menu.gold{background:linear-gradient(180deg,#ffd76a,#e09020);color:#1a100
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
-const STORE_KEY = 'rsp.v9.scores';
+const STORE_KEY = 'rsp.v10.scores';
 function loadScores(){
   try{ const r = localStorage.getItem(STORE_KEY); return r ? JSON.parse(r) : {levels:{}, endless:0}; }
   catch(e){ return {levels:{}, endless:0}; }
@@ -123,7 +125,7 @@ const audio = (()=>{
   }
   function flush(){ while(pending.length){ try{ pending.shift()(); }catch(e){} } }
   function gesture(){ build(); silentUnlock(); resume(); }
-  function whenReady(fn){ build(); if(ctx && ctx.state==='running') fn(); else pending.push(fn); resume(); }
+  function whenReady(fn){ build(); if(ctx && ctx.state==='running') fn(); else { if(pending.length>=6) pending.shift(); pending.push(fn); } resume(); } // v10: cap the queue — a suspended/interrupted iOS context no longer piles up (then bursts) hundreds of sounds
   function tone(freq, dur, type='sine', vol=0.15, slide=0){
     whenReady(()=>{
       if(muted||!ctx) return;
@@ -137,24 +139,52 @@ const audio = (()=>{
       o.connect(g); g.connect(master); o.start(t0); o.stop(t0+dur+0.02);
     });
   }
+  let noiseBuf=null;
   function noise(dur, vol=0.12){
     whenReady(()=>{
       if(muted||!ctx) return;
-      const n=Math.floor(ctx.sampleRate*dur), buf=ctx.createBuffer(1,n,ctx.sampleRate);
-      const d=buf.getChannelData(0); for(let i=0;i<n;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/n,1.4);
-      const s=ctx.createBufferSource(); s.buffer=buf;
-      const g=ctx.createGain(); g.gain.value=vol; s.connect(g); g.connect(master); s.start();
+      if(!noiseBuf){ const n=Math.floor(ctx.sampleRate*2); noiseBuf=ctx.createBuffer(1,n,ctx.sampleRate); const d=noiseBuf.getChannelData(0); for(let i=0;i<n;i++) d[i]=Math.random()*2-1; } // v10: one shared buffer (was a fresh buffer + Math.random fill per hit)
+      const t0=ctx.currentTime, s=ctx.createBufferSource(); s.buffer=noiseBuf;
+      const g=ctx.createGain(); g.gain.setValueAtTime(vol,t0); g.gain.linearRampToValueAtTime(vol*0.35,t0+dur*0.45); g.gain.linearRampToValueAtTime(0,t0+dur);
+      s.connect(g); g.connect(master); s.start(t0, Math.random()*1.2); s.stop(t0+dur+0.03);
     });
   }
+  // v10: continuous engine + rocket roar (persistent nodes, params only — no per-frame allocation)
+  let eng=null;
+  function buildEngine(){
+    if(eng || !ctx || ctx.state!=='running') return;
+    const o1=ctx.createOscillator(), o2=ctx.createOscillator(), lp=ctx.createBiquadFilter(), g=ctx.createGain();
+    o1.type='sawtooth'; o2.type='square'; o1.frequency.value=55; o2.frequency.value=27.5; lp.type='lowpass'; lp.frequency.value=500; lp.Q.value=4;
+    const g2=ctx.createGain(); g2.gain.value=0.45; o1.connect(lp); o2.connect(g2); g2.connect(lp); lp.connect(g); g.gain.value=0; g.connect(master);
+    const n=ctx.sampleRate*2, buf=ctx.createBuffer(1,n,ctx.sampleRate), d=buf.getChannelData(0); for(let i=0;i<n;i++) d[i]=Math.random()*2-1;
+    const rs=ctx.createBufferSource(); rs.buffer=buf; rs.loop=true; const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=700; bp.Q.value=0.7;
+    const rg=ctx.createGain(); rg.gain.value=0; rs.connect(bp); bp.connect(rg); rg.connect(master);
+    o1.start(); o2.start(); rs.start();
+    eng={o1,o2,lp,g,rg,bp,lf:0,lg:-1,lr:-1};
+  }
+  function engine(on, speed, gas, grounded, rocket){
+    if(!ctx || ctx.state!=='running') return; buildEngine(); if(!eng) return;
+    const t=ctx.currentTime, sp=Math.abs(speed||0);
+    const f = (55 + sp*3.1 + (gas?14:0)) * (grounded?1:1.22);
+    const gv = (on && !muted) ? (0.05 + Math.min(0.07, sp*0.0016) + (gas?0.05:0)) : 0;
+    const rv = (on && !muted && rocket) ? 0.2 : 0;
+    if(Math.abs(f-eng.lf)>0.8){ eng.lf=f; eng.o1.frequency.setTargetAtTime(f,t,0.06); eng.o2.frequency.setTargetAtTime(f*0.5,t,0.06); eng.lp.frequency.setTargetAtTime(380+sp*38+(gas?300:0),t,0.08); }
+    if(Math.abs(gv-eng.lg)>0.004){ eng.lg=gv; eng.g.gain.setTargetAtTime(gv,t,0.07); }
+    if(Math.abs(rv-eng.lr)>0.004){ eng.lr=rv; eng.rg.gain.setTargetAtTime(rv,t,rocket?0.04:0.12); }
+  }
+  function engineLevel(){ return eng ? {f:+eng.lf.toFixed(1), g:+eng.lg.toFixed(3), r:+eng.lr.toFixed(3)} : null; }
   return {
-    gesture, muted:()=>muted, setMuted(v){ muted=!!v; },
+    gesture, engine, engineLevel, muted:()=>muted, setMuted(v){ muted=!!v; },
+    coin(){ tone(1320,0.05,'sine',0.05); tone(1980,0.07,'sine',0.035); },
+    gold(){ tone(784,0.1,'triangle',0.14); setTimeout(()=>tone(1046,0.1,'triangle',0.14),80); setTimeout(()=>tone(1568,0.3,'sine',0.14),160); noise(0.2,0.06); },
+    boom(){ noise(0.55,0.4); tone(70,0.5,'sine',0.3,-40); tone(140,0.25,'sawtooth',0.16,-90); setTimeout(()=>{ tone(900,0.12,'triangle',0.08); tone(1350,0.16,'sine',0.06); },120); },
     ui(){ tone(660,0.06,'triangle',0.08); },
     thrust(){ noise(0.08,0.1); tone(90,0.12,'sawtooth',0.08,40); },
     boost(){ noise(0.15,0.14); tone(140,0.18,'sawtooth',0.12,120); tone(420,0.1,'sine',0.06); },
     flip(){ tone(520,0.08,'square',0.1); tone(780,0.1,'triangle',0.08); },
     star(){ tone(880,0.08,'sine',0.1); tone(1320,0.12,'sine',0.08); },
-    land(){ noise(0.14,0.22); tone(100,0.14,'triangle',0.18,45); tone(220,0.06,'sine',0.1); },
-    crash(){ noise(0.35,0.28); tone(80,0.3,'sawtooth',0.2,-50); },
+    land(k=0.5){ noise(0.12+0.1*k,0.18+0.14*k); tone(70+30*k,0.16+0.08*k,'sine',0.2+0.12*k,-25); tone(220,0.05,'square',0.05); },
+    crash(){ noise(0.6,0.42); tone(60,0.55,'sine',0.32,-30); tone(110,0.35,'sawtooth',0.2,-70); setTimeout(()=>{ noise(0.25,0.2); tone(420,0.08,'square',0.08,-200); },110); setTimeout(()=>tone(300,0.1,'triangle',0.07,-120),260); },
     smash(){ noise(0.22,0.3); tone(160,0.12,'sawtooth',0.18,-80); tone(60,0.2,'square',0.12); },
     checkpoint(){ tone(640,0.08,'sine',0.1); tone(960,0.12,'triangle',0.1); tone(1280,0.1,'sine',0.07); },
     softpop(){ tone(520,0.06,'sine',0.08); tone(780,0.1,'triangle',0.07); noise(0.08,0.08); },
@@ -320,11 +350,14 @@ function join(...segs){
 }
 
 const LEVELS = [];
+const GOLD_STARS = [{x:28,y:0},{x:84,y:0},{x:95,y:16},{x:40,y:0},{x:12,y:0},{x:190,y:18},{x:24,y:0},{x:110,y:2}]; // v10: one per level, 3.6 up → needs a ROCKET hop or a jump
 function addSetPieces(){ // v9: research set pieces — kid-safe bounce pad + pop-up launch box
   LEVELS[0].bouncePads=[{x:92,y:0,kind:'pad'}];
   LEVELS[1].bouncePads=[{x:12,y:0,kind:'box'}];
   LEVELS[3].bouncePads=[{x:218,y:0,kind:'pad'}];
   LEVELS[6].bouncePads=[{x:262,y:0,kind:'box'}];
+  LEVELS[2].bouncePads=[{x:8,y:0,kind:'box'}]; LEVELS[4].bouncePads=[{x:168,y:0,kind:'box'}]; LEVELS[7].bouncePads=[{x:392,y:0,kind:'box'}]; // v10 BOOM boxes
+  LEVELS.forEach((lv,i)=>{ lv.gold = GOLD_STARS[i]||null; });
 }
 (function buildLevels(){
   // 1 Desert Dawn — tutorial + corkscrew
@@ -488,6 +521,8 @@ let decorGroup = new THREE.Group();
 let pickupGroup = new THREE.Group();
 world.add(trackGroup, decorGroup, pickupGroup);
 
+/* v10 suspension constants (car-local units; car mesh scale 0.85) */
+const SUSP = { lift:0.10, sag:0.05, maxC:0.20, droop:-0.12, k:240, d:11, kAir:90, dAir:9, axF:1.15, axR:1.06, wb:2.6, wheelR:0.32 };
 /* Roadster mesh */
 function makeRoadster(){
   const g = new THREE.Group();
@@ -499,55 +534,58 @@ function makeRoadster(){
   const gold = new THREE.MeshStandardMaterial({ color:0xd4a020, metalness:0.9, roughness:0.25, emissive:0x402000, emissiveIntensity:0.25 });
   const tire = new THREE.MeshStandardMaterial({ color:0x111111, roughness:0.9 });
 
+  const sprung = new THREE.Group(); sprung.position.y = SUSP.lift; g.add(sprung); // v10: sprung mass (moves on the suspension)
   // Lower wedge body
   const body = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.55, 1.9), white);
-  body.position.set(0, 0.45, 0); body.castShadow=true; g.add(body);
+  body.position.set(0, 0.45, 0); body.castShadow=true; sprung.add(body);
   // Cabin wedge (angular)
   const cabin = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.55, 1.55), whiteSatin);
-  cabin.position.set(-0.15, 0.95, 0); cabin.castShadow=true; g.add(cabin);
+  cabin.position.set(-0.15, 0.95, 0); cabin.castShadow=true; sprung.add(cabin);
   // Nose taper (front scoop)
   const nose = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.35, 1.7), white);
-  nose.position.set(1.85, 0.42, 0); nose.castShadow=true; g.add(nose);
+  nose.position.set(1.85, 0.42, 0); nose.castShadow=true; sprung.add(nose);
   // Canopy
   const canopy = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.35, 1.35), glass);
-  canopy.position.set(-0.1, 1.22, 0); g.add(canopy);
+  canopy.position.set(-0.1, 1.22, 0); sprung.add(canopy);
   // Full-width front light bar
   const lightBar = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.1, 1.75), lightMat);
-  lightBar.position.set(2.38, 0.48, 0); g.add(lightBar);
+  lightBar.position.set(2.38, 0.48, 0); sprung.add(lightBar);
   // Side skirts
   const skirtL = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.12, 0.12), dark);
-  skirtL.position.set(0.1, 0.18, 0.98); g.add(skirtL);
-  const skirtR = skirtL.clone(); skirtR.position.z = -0.98; g.add(skirtR);
+  skirtL.position.set(0.1, 0.18, 0.98); sprung.add(skirtL);
+  const skirtR = skirtL.clone(); skirtR.position.z = -0.98; sprung.add(skirtR);
   // Rear deck
   const deck = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.28, 1.75), whiteSatin);
-  deck.position.set(-1.7, 0.72, 0); g.add(deck);
+  deck.position.set(-1.7, 0.72, 0); sprung.add(deck);
   // Diffuser
   const diff = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.22, 1.7), dark);
-  diff.position.set(-2.25, 0.28, 0); g.add(diff);
+  diff.position.set(-2.25, 0.28, 0); sprung.add(diff);
   // 4 thruster nozzles (gold)
   const nozzles=[];
   for(let i=0;i<4;i++){
     const n = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.35, 10), gold);
     n.rotation.z = Math.PI/2;
     n.position.set(-2.45, 0.32, -0.55 + i*0.37);
-    g.add(n); nozzles.push(n);
+    sprung.add(n); nozzles.push(n);
   }
   // Subtle wing
   const wing = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.06, 1.85), dark);
-  wing.position.set(-1.95, 1.05, 0); g.add(wing);
+  wing.position.set(-1.95, 1.05, 0); sprung.add(wing);
   const wingStalk = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.28, 0.12), dark);
-  wingStalk.position.set(-1.95, 0.9, 0); g.add(wingStalk);
+  wingStalk.position.set(-1.95, 0.9, 0); sprung.add(wingStalk);
   // Wheels
-  const wheels=[];
+  const wheels=[], hubs=[];
   const wpos=[[1.35,0.28,0.95],[1.35,0.28,-0.95],[-1.25,0.28,0.95],[-1.25,0.28,-0.95]];
+  const tireGeo=new THREE.CylinderGeometry(0.32,0.32,0.28,14), rimGeo=new THREE.CylinderGeometry(0.18,0.18,0.3,10), spokeGeo=new THREE.BoxGeometry(0.3,0.05,0.31);
   for(const [x,y,z] of wpos){
-    const w = new THREE.Mesh(new THREE.CylinderGeometry(0.32,0.32,0.28,14), tire);
-    w.rotation.x = Math.PI/2; w.position.set(x,y,z); w.castShadow=true; g.add(w); wheels.push(w);
-    const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.18,0.18,0.3,10), gold);
-    rim.rotation.x = Math.PI/2; rim.position.set(x,y,z); g.add(rim);
+    const hub = new THREE.Group(); hub.position.set(x,y,z); g.add(hub); // v10: each wheel is its own unsprung hub (follows its own contact point)
+    const w = new THREE.Mesh(tireGeo, tire); w.rotation.x = Math.PI/2; hub.add(w); wheels.push(w);
+    const rim = new THREE.Mesh(rimGeo, gold); rim.rotation.x = Math.PI/2; hub.add(rim);
+    const sp = new THREE.Mesh(spokeGeo, dark); sp.rotation.x = Math.PI/2; hub.add(sp); // visible spin cue
+    hubs.push({hub, front:x>0, baseY:y});
   }
   g.scale.set(0.85,0.85,0.85);
-  return { group:g, nozzles, wheels, lightBar, baseScale:0.85 };
+  return { group:g, body:sprung, hubs, nozzles, wheels, lightBar, baseScale:0.85 };
 }
 
 const carVisual = makeRoadster();
@@ -563,20 +601,24 @@ pGeo.setAttribute('color', new THREE.BufferAttribute(pCol,3));
 const pMat = new THREE.PointsMaterial({ size:1.05, vertexColors:true, transparent:true, opacity:0.95, depthWrite:false, blending:THREE.AdditiveBlending, sizeAttenuation:true });
 const pPoints = new THREE.Points(pGeo, pMat);
 scene.add(pPoints);
-const particles = [];
+// v10: fixed object pool + ring cursor — zero allocations, no shift()/splice() churn
+const particles = []; for(let i=0;i<MAX_P;i++) particles.push({x:0,y:0,z:0,vx:0,vy:0,vz:0,life:0,max:1,r:0,g:0,b:0});
+let _pCur=0, _pLive=0;
+particles.clear = function(){ for(const p of this) p.life=0; _pLive=0; };
 function spawnParticle(x,y,z, vx,vy,vz, life, r,g,b){
-  if(particles.length>=MAX_P) particles.shift();
-  particles.push({x,y,z,vx,vy,vz,life,max:life,r,g,b});
+  const p=particles[_pCur]; _pCur=(_pCur+1)%MAX_P;
+  p.x=x;p.y=y;p.z=z;p.vx=vx;p.vy=vy;p.vz=vz;p.life=life;p.max=life;p.r=r;p.g=g;p.b=b; _pLive=MAX_P;
 }
 function updateParticles(dt){
-  for(let i=particles.length-1;i>=0;i--){
-    const p=particles[i];
-    p.life-=dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.z+=p.vz*dt; p.vy-=4*dt;
-    if(p.life<=0) particles.splice(i,1);
-  }
+  if(_pLive===0) return; // nothing alive: skip the GPU upload entirely
+  let alive=0;
   for(let i=0;i<MAX_P;i++){
     const p=particles[i];
-    if(p){
+    if(p.life>0){
+      p.life-=dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.z+=p.vz*dt; p.vy-=4*dt;
+    }
+    if(p.life>0){
+      alive++;
       pPos[i*3]=p.x; pPos[i*3+1]=p.y; pPos[i*3+2]=p.z;
       const a=p.life/p.max;
       pCol[i*3]=p.r*a; pCol[i*3+1]=p.g*a; pCol[i*3+2]=p.b*a;
@@ -587,6 +629,7 @@ function updateParticles(dt){
   }
   pGeo.attributes.position.needsUpdate=true;
   pGeo.attributes.color.needsUpdate=true;
+  if(alive===0) _pLive=0;
 }
 
 /* Track sampling — multi-segment with Frenet frames */
@@ -679,6 +722,24 @@ function sampleSegment(seg, sLocal){
     atEnd: ss >= len - 0.35
   };
 }
+// v10: allocation-free sampler for the per-tick hot path (writes into a caller-owned frame)
+function makeFrame(){ return { s:0, globalS:0, seg:0, pos:new THREE.Vector3(), tangent:new THREE.Vector3(), normal:new THREE.Vector3(), binormal:new THREE.Vector3(), atEnd:false }; }
+function sampleInto(seg, sLocal, out){
+  const frames = seg.frames, len = seg.length;
+  const over = sLocal - len, under = -sLocal;
+  const ss = Math.max(0, Math.min(len, sLocal));
+  const idx = (ss/len) * (frames.length-1);
+  const i0 = Math.floor(idx), i1 = Math.min(frames.length-1, i0+1), f = idx - i0;
+  const A=frames[i0], B=frames[i1];
+  out.s=ss; out.globalS=seg.s0+ss; out.seg=seg.index; out.atEnd = ss >= len-0.35;
+  out.pos.copy(A.pos).lerp(B.pos,f);
+  out.tangent.copy(A.tangent).lerp(B.tangent,f).normalize();
+  out.normal.copy(A.normal).lerp(B.normal,f).normalize();
+  out.binormal.copy(A.binormal).lerp(B.binormal,f).normalize();
+  if(over>0) out.pos.addScaledVector(out.tangent, over);       // extrapolate past the segment tip (wheel probes)
+  else if(under>0) out.pos.addScaledVector(out.tangent, -under);
+  return out;
+}
 function sampleFrames(framesData, globalS){
   // map global s onto segments
   let rem = Math.max(0, globalS);
@@ -693,7 +754,7 @@ function sampleFrames(framesData, globalS){
 
 const TRACK_W = 5.0, TRACK_T = 0.78;
 const RIDE = 0.04; // v9: car origin = wheel contact (wheel bottom is -0.034 local). v8 used 0.95 → car hovered ~0.92 above the road.
-function clearGroup(g){ while(g.children.length){ const c=g.children.pop(); if(c.geometry) c.geometry.dispose(); } }
+function clearGroup(g){ while(g.children.length){ const c=g.children.pop(); if(c.isInstancedMesh) c.dispose(); else if(c.geometry) c.geometry.dispose(); } }
 
 function mergeStatic(group){ // v9: one draw call per material instead of one per plank
   const byMat = new Map(), keep = [];
@@ -836,6 +897,11 @@ function buildPickups(level, framesData){
       : new THREE.Mesh(new THREE.CylinderGeometry(1.1,1.3,0.35,20), new THREE.MeshStandardMaterial({color:0x40e070, emissive:0x108030, emissiveIntensity:0.6, roughness:0.5}));
     m.position.copy(fr.pos).add(fr.normal.clone().multiplyScalar(bp.kind==='box'?0.5:0.18));
     if(bp.kind!=='box') m.scale.set(1,1,1.6);
+    if(bp.kind==='box'){ // v10: hazard-stripe band + "!" glow so it reads as a launch box
+      const band=new THREE.Mesh(new THREE.BoxGeometry(1.66,0.22,TRACK_W*0.72), new THREE.MeshStandardMaterial({color:0xffe040, emissive:0xaa8000, emissiveIntensity:0.6}));
+      band.position.y=0.18; m.add(band);
+    }
+    bp._mesh = m; m.visible = true;
     pickupGroup.add(m);
   }
   const starMat = new THREE.MeshStandardMaterial({ color:0xffd76a, emissive:0xffaa20, emissiveIntensity:0.8, metalness:0.4, roughness:0.3 });
@@ -858,6 +924,20 @@ function buildPickups(level, framesData){
     star.userData = { kind:'star', taken:false, base:star.position.clone() };
     pickupGroup.add(star);
     level._starMeshes.push(star);
+  }
+
+  // v10: hidden GOLD STAR (one per level, high above the road: ROCKET hop or a jump to reach)
+  level._gold = null;
+  if(level.gold){
+    const gf = nearestFrameToXY(framesData, level.gold.x, level.gold.y);
+    const sh = new THREE.Shape(); for(let i=0;i<10;i++){ const a=Math.PI/2+i*Math.PI/5, r=i%2?0.45:1.05; i?sh.lineTo(Math.cos(a)*r,Math.sin(a)*r):sh.moveTo(Math.cos(a)*r,Math.sin(a)*r); } sh.closePath();
+    const gg = new THREE.ExtrudeGeometry(sh,{depth:0.28,bevelEnabled:true,bevelSize:0.08,bevelThickness:0.08,bevelSegments:1}); gg.center();
+    const gm = new THREE.Mesh(gg, new THREE.MeshStandardMaterial({color:0xffc830, emissive:0xff9a00, emissiveIntensity:1.15, metalness:0.6, roughness:0.22}));
+    const halo = new THREE.Mesh(new THREE.TorusGeometry(1.45,0.07,6,28), new THREE.MeshBasicMaterial({color:0xfff0a0, transparent:true, opacity:0.55, blending:THREE.AdditiveBlending, depthWrite:false}));
+    gm.add(halo);
+    gm.position.copy(gf.pos).addScaledVector(gf.normal, 3.6);
+    gm.userData = { kind:'gold', taken:false, base:gm.position.clone(), seg:gf.seg||0, s:gf.s };
+    pickupGroup.add(gm); level._gold = gm;
   }
 
   level._smashMeshes = [];
@@ -1028,6 +1108,63 @@ function buildPickups(level, framesData){
     pickupGroup.add(g);
     level._propMeshes.push(g);
   }
+  buildCoins(level, framesData);
+}
+/* v10 COINS: a trail along every segment, one InstancedMesh per level (1 draw call); collected = zero-scale matrix */
+const COIN_MAX = 96, COIN_R = 2.4;
+const coinGeo = new THREE.CylinderGeometry(0.46,0.46,0.1,18); coinGeo.rotateX(Math.PI/2);
+const coinMat = new THREE.MeshStandardMaterial({ color:0xffd24a, emissive:0xc08000, emissiveIntensity:0.7, metalness:0.75, roughness:0.25 });
+const _cM=new THREE.Matrix4(), _cQ=new THREE.Quaternion(), _cS=new THREE.Vector3(1,1,1), _cZ=new THREE.Vector3(0,0,0), _cY=new THREE.Vector3(0,1,0);
+function buildCoins(level, framesData){
+  const avoid = [];
+  for(const bp of (level.bouncePads||[])) if(bp._mesh) avoid.push(bp._mesh.position);
+  for(const m of (level._boostMeshes||[])) avoid.push(m.position);
+  for(const m of (level._smashMeshes||[])) avoid.push(m.position);
+  for(const m of (level._starMeshes||[])) avoid.push(m.position);
+  let total=0; for(const sg of framesData.segs) total += sg.length;
+  const step = Math.max(5.5, total/COIN_MAX);
+  const pts=[];
+  for(const sg of framesData.segs){
+    for(let cs=5; cs<sg.length-3 && pts.length<COIN_MAX; cs+=step){
+      const f = sampleSegment(sg, cs);
+      const p = f.pos.clone().addScaledVector(f.normal, 1.15);
+      if(avoid.some(a=>a.distanceToSquared(p) < 12)) continue;
+      pts.push({p, seg:sg.index, s:cs, taken:false});
+    }
+  }
+  const im = new THREE.InstancedMesh(coinGeo, coinMat, Math.max(1, pts.length));
+  im.count = pts.length; im.frustumCulled = false;
+  for(let i=0;i<pts.length;i++){ _cM.compose(pts[i].p, _cQ.identity(), _cS); im.setMatrixAt(i, _cM); }
+  im.instanceMatrix.needsUpdate = true;
+  pickupGroup.add(im);
+  level._coins = { im, pts, n:pts.length };
+}
+function updateCoins(dt){
+  const c = state.level && state.level._coins; if(!c || !c.n) return;
+  _cQ.setFromAxisAngle(_cY, performance.now()/1000*3.2);
+  const r2 = COIN_R*COIN_R;
+  for(let i=0;i<c.n;i++){
+    const pt=c.pts[i];
+    if(!pt.taken && state.mode==='play' && pt.p.distanceToSquared(car.pos) < r2){
+      pt.taken=true; state.coins=(state.coins||0)+1; state.score += 10;
+      const t=performance.now(); if(!(t - (state._coinSfx||0) < 70)){ state._coinSfx=t; audio.coin(); }
+      spawnParticle(pt.p.x, pt.p.y, pt.p.z, 0, 3, 0, 0.35, 1.0, 0.85, 0.3);
+    }
+    _cM.compose(pt.p, _cQ, pt.taken ? _cZ : _cS); c.im.setMatrixAt(i, _cM);
+  }
+  c.im.instanceMatrix.needsUpdate = true;
+}
+function boomBox(bp, fr){ // v10 set piece: BOOM box → confetti blast, short slow-mo, camera swoop
+  if(bp._mesh) bp._mesh.visible = false;
+  const p = bp._mesh ? bp._mesh.position : car.pos;
+  const COLS=[[1,0.35,0.2],[1,0.85,0.2],[0.3,0.9,1],[0.5,1,0.4],[1,0.5,0.9]];
+  for(let i=0;i<70;i++){ const a=Math.random()*Math.PI*2, v=6+Math.random()*16, c=COLS[i%5];
+    spawnParticle(p.x, p.y+0.4, p.z, Math.cos(a)*v*0.7, 6+Math.random()*16, Math.sin(a)*v*0.5, 0.7+Math.random()*0.7, c[0],c[1],c[2]); }
+  audio.boom(); haptic(30);
+  state.shake = Math.max(state.shake, 0.45); state.fovPunch = Math.min(1, state.fovPunch + 0.5);
+  state.slowmo = 0.75; state.slowmoScale = 0.4; state.slowmoUsedAt = performance.now();
+  state.cine = { t:0, dur:2.0 }; state.cineCount = (state.cineCount||0) + 1;
+  addScore(250, 'KABOOM!', 'combo');
 }
 
 /* Game state */
@@ -1037,7 +1174,7 @@ const state = {
   score:0, mult:1, combo:0, comboTimer:0,
   fuel:1, starsGot:0, starsTotal:0, smashes:0, checkpointsGot:0, boostsGot:0, propsGot:0,
   flips:0, frontflips:0, backflips:0, airTimeTotal:0, cleanLands:0, thrustStyle:0,
-  shake:0, fovPunch:0, squash:0, grade:'☆☆☆', starGrade:0,
+  shake:0, fovPunch:0, squash:0, grade:'☆☆☆', starGrade:0, coins:0, goldGot:false, cine:null, cineCount:0, slowmoScale:0.45,
   framesData:null, level:null,
   chunks:[], // endless
   lastCheckpoint:null, // {s, segIndex, fuelFloor, levelIndex}
@@ -1076,14 +1213,15 @@ function startLevel(idx, endless=false, fromCheckpoint=false){
     state.fuel=1; state.starsGot=0; state.smashes=0; state.checkpointsGot=0; state.boostsGot=0; state.propsGot=0;
     state.flips=0; state.frontflips=0; state.backflips=0; state.airTimeTotal=0;
     state.cleanLands=0; state.thrustStyle=0;
-    state.lastCheckpoint=null;
+    state.lastCheckpoint=null; state.coins=0; state.goldGot=false;
   } else {
     state.mult=1; state.combo=0; state.comboTimer=0;
     state.fuel=Math.max(keepCp.fuelFloor||0.45, state.fuel||0.45);
   }
-  state.shake=0; state.fovPunch=0; state.squash=0;
+  state.shake=0; state.fovPunch=0; state.squash=0; state.cine=null; state.slowmo=0; state.cineCount=0;
+  susp.cF=susp.cR=SUSP.sag; susp.vF=susp.vR=0; susp.hF=susp.hR=0; susp.peak=0; susp.kicks=0;
   state.grade='☆☆☆'; state.starGrade=0; state.chunks=[];
-  particles.length=0;
+  particles.clear();
 
   let level;
   if(endless){
@@ -1105,6 +1243,11 @@ function startLevel(idx, endless=false, fromCheckpoint=false){
         gate.userData.taken=true; gate.visible=false;
       }
     }
+    // v10: coins/gold collected before the checkpoint stay collected (no double counting)
+    const before=(sg,ss)=> sg < (keepCp.segIndex||0) || (sg===(keepCp.segIndex||0) && ss <= keepCp.s + 0.5);
+    if(level._coins) for(const pt of level._coins.pts) if(before(pt.seg, pt.s)) pt.taken=true;
+    state.coins = keepCp.coins||0; state.goldGot = !!keepCp.gold;
+    if(level._gold && keepCp.gold){ level._gold.userData.taken=true; level._gold.visible=false; }
   }
 
   car.s = keepCp ? keepCp.s : 0.5;
@@ -1170,7 +1313,8 @@ function orientCar(fr, pitch){
     const q = new THREE.Quaternion().setFromAxisAngle(bin, pitch);
     tang.applyQuaternion(q); norm.applyQuaternion(q);
   }
-  const m = new THREE.Matrix4().makeBasis(tang, norm, bin);
+  const side = bin.crossVectors(tang, norm).normalize(); // v10 fix: track binormal points -z, which made this basis left-handed (det -1) so the extracted quaternion under-pitched the car on every slope; build a proper right-handed basis instead
+  const m = new THREE.Matrix4().makeBasis(tang, norm, side);
   car.quat.setFromRotationMatrix(m);
   carVisual.group.quaternion.copy(car.quat);
   carVisual.group.position.copy(car.pos);
@@ -1218,14 +1362,18 @@ function computeStarGrade(){
   if(state.starsGot >= tot && tot > 0) g = 3;
   return g;
 }
+const _hud = { score:-1, mult:-1, grade:'', star:'', el:null };
 function updateHUD(){
-  document.getElementById('scorePanel').textContent = state.score.toLocaleString();
-  document.getElementById('multPanel').textContent = '×'+state.mult;
+  if(!_hud.el) _hud.el = { sc:document.getElementById('scorePanel'), mu:document.getElementById('multPanel'), gr:document.getElementById('gradePanel'), sh:document.getElementById('starHud') };
+  const E=_hud.el;
+  if(state.score!==_hud.score){ _hud.score=state.score; E.sc.textContent = state.score.toLocaleString(); }
+  if(state.mult!==_hud.mult){ _hud.mult=state.mult; E.mu.textContent = '×'+state.mult; }
   const live = state.mode==='play' ? computeStarGrade() : state.starGrade;
   const s = starString(live);
-  document.getElementById('gradePanel').textContent = s;
-  const sh = document.getElementById('starHud');
-  if(sh) sh.textContent = s + '  '+state.starsGot+'/'+state.starsTotal;
+  if(s!==_hud.grade){ _hud.grade=s; E.gr.textContent = s; }
+  const cn = state.level && state.level._coins ? state.level._coins.n : 0;
+  const hs = s+'  '+state.starsGot+'/'+state.starsTotal+(cn?'  <span class="coin">● '+(state.coins||0)+'/'+cn+'</span>':'')+(state.level&&state.level.gold?(state.goldGot?'  <span class="gold">✪ GOLD</span>':'  ✧ ?'):'');
+  if(E.sh && hs!==_hud.star){ _hud.star=hs; E.sh.innerHTML = hs; }
   { const fw = Math.round(state.fuel*100); if(fw!==_fuelW){ _fuelW=fw; fuelFillEl.style.width = fw+'%'; rocketFillEl.style.transform='scaleX('+(fw/100)+')'; btnThrust.style.opacity = fw>2?'1':'0.55'; } }
 }
 
@@ -1256,7 +1404,7 @@ function showTitle(){
   camState.look.copy(car.pos).add(new THREE.Vector3(4,1,0));
   const card=document.getElementById('card');
   card.innerHTML = '<h1>Roadster Stunt Paradise</h1>'+
-    '<p class="sub">Gas · Brake · Lean · Flip · Smash · Checkpoint chains · Air routes · Spectacle. Closer every day.</p>'+
+    '<p class="sub">Gas · Brake · Lean · Flip · Real suspension · BOOM boxes · Coins · Find the hidden ✪ gold star. Closer every day.</p>'+
     '<div class="btnRow"><button class="menu gold" id="btnPlay">PLAY</button>'+
     '<button class="menu secondary" id="btnLevels">LEVELS</button>'+
     '<button class="menu secondary" id="btnEndless">ENDLESS</button></div>'+
@@ -1273,7 +1421,7 @@ function showSelect(){
   for(let i=0;i<LEVELS.length;i++){
     const unlocked = i===0 || (scores.levels[i-1]!=null);
     const best = scores.levels[i];
-    const bestStars = (best && typeof best==='object' && best.stars!=null) ? starString(best.stars) : '';
+    const bestStars = ((best && typeof best==='object' && best.stars!=null) ? starString(best.stars) : '') + ((best && best.gold) ? ' ✪' : '');
     const bestScore = best==null ? null : (typeof best==='object' ? (best.score||0) : best);
     html += '<button class="lvlBtn" data-i="'+i+'" '+(unlocked?'':'disabled')+'>'+(i+1)+
       (bestScore!=null?'<small>'+bestScore.toLocaleString()+' '+bestStars+'</small>':'<small>'+LEVELS[i].name.split(' ')[0]+'</small>')+'</button>';
@@ -1326,8 +1474,9 @@ function winRun(){
     const prev = scores.levels[state.levelIndex];
     const prevScore = (prev && typeof prev==='object') ? (prev.score||0) : (prev||0);
     const prevStars = (prev && typeof prev==='object') ? (prev.stars||0) : 0;
-    if(state.score>prevScore || starGrade>prevStars){
-      scores.levels[state.levelIndex]={score:Math.max(state.score,prevScore), stars:Math.max(starGrade,prevStars)};
+    const prevGold = !!(prev && typeof prev==='object' && prev.gold), prevCoins = (prev && typeof prev==='object') ? (prev.coins||0) : 0;
+    if(state.score>prevScore || starGrade>prevStars || (state.goldGot && !prevGold) || (state.coins||0)>prevCoins || prev==null){
+      scores.levels[state.levelIndex]={score:Math.max(state.score,prevScore), stars:Math.max(starGrade,prevStars), gold:prevGold||!!state.goldGot, coins:Math.max(prevCoins, state.coins||0)};
       saveScores(scores);
     }
   } else {
@@ -1338,7 +1487,8 @@ function winRun(){
   document.getElementById('card').innerHTML='<h1>'+(state.endless?'Distance!':LEVELS[state.levelIndex].name)+'</h1>'+
     '<div class="gradeHero">'+state.grade+'</div>'+
     '<p class="sub">Score '+state.score.toLocaleString()+' · Stars '+state.starsGot+'/'+state.starsTotal+
-    ' · Flips '+state.flips+' (↑'+state.frontflips+' ↓'+state.backflips+') · Smash '+state.smashes+' · Clean '+state.cleanLands+'</p>'+
+    ' · Flips '+state.flips+' (↑'+state.frontflips+' ↓'+state.backflips+') · Smash '+state.smashes+' · Clean '+state.cleanLands+
+    (state.level&&state.level._coins?' · Coins '+(state.coins||0)+'/'+state.level._coins.n:'')+(state.level&&state.level.gold?(state.goldGot?' · ✪ GOLD STAR!':' · ✧ gold star hidden — try the ROCKET'):'')+'</p>'+
     '<p class="oneMore">One more run — chase ★★★!</p>'+
     '<div class="btnRow">'+
     (hasNext?'<button class="menu gold" id="btnNext">NEXT</button>':'')+
@@ -1364,26 +1514,27 @@ const FUEL_BURN = 0.38;
 const FUEL_REGEN = 0.16;
 const DT = 1/60;
 
+const _EMPTY=Object.freeze([]); const _pref=[]; // v10: reused (was a fresh array + iterators per call, ~3 calls per physics step while airborne)
 function nearestFrame(pos){
   const frames=state.framesData.frames;
   const segs=state.framesData.segs;
   // When airborne, strongly prefer the NEXT segment (landing pad) over the lip we just left
   if(!car.grounded && !car.lipLaunch && segs && segs.length){ // v7: lip jumps use true nearest track
-    const prefer = [];
+    const prefer = _pref; prefer.length = 0;
     const next = Math.min(car.segIndex + 1, segs.length - 1);
     prefer.push(next);
     // During airGrace, skip the segment we launched from entirely
     if(car.airGrace <= 0 && next !== car.segIndex) prefer.push(car.segIndex);
     for(let k=0;k<segs.length;k++){
       if(car.airGrace > 0 && k === car.segIndex) continue;
-      if(!prefer.includes(k)) prefer.push(k);
+      if(prefer.indexOf(k) < 0) prefer.push(k);
     }
     let bestF=null, bd=1e12;
-    for(const si of prefer){
-      const seg=segs[si];
-      const weight = (si===next) ? 0.45 : (si===car.segIndex ? 1.5 : 1.0);
-      for(const f of seg.frames){
-        if(si===car.segIndex && f.s > seg.length - 4) continue;
+    for(let pi=0; pi<prefer.length; pi++){
+      const si=prefer[pi], seg=segs[si], fr=seg.frames, lim=seg.length-4, own=(si===car.segIndex);
+      const weight = (si===next) ? 0.45 : (own ? 1.5 : 1.0);
+      for(let j=0;j<fr.length;j++){ const f=fr[j];
+        if(own && f.s > lim) continue;
         const d=f.pos.distanceToSquared(pos) * weight;
         if(d<bd){ bd=d; bestF=f; }
       }
@@ -1393,8 +1544,8 @@ function nearestFrame(pos){
   if(!car.grounded && car.lipLaunch && segs){
     // v7: lip jump — exhaustive search over this segment + next (cheap, accurate landing)
     let bf=null, bd2=1e12;
-    for(const si of [car.segIndex, car.segIndex+1]){ const sg=segs[si]; if(!sg) continue;
-      for(const f of sg.frames){ const d=f.pos.distanceToSquared(pos); if(d<bd2){bd2=d;bf=f;} } }
+    for(let si=car.segIndex; si<=car.segIndex+1; si++){ const sg=segs[si]; if(!sg) continue; const fr=sg.frames;
+      for(let j=0;j<fr.length;j++){ const d=fr[j].pos.distanceToSquared(pos); if(d<bd2){bd2=d;bf=fr[j];} } }
     if(bf) return bf;
   }
   let best=0, bd=1e12;
@@ -1411,6 +1562,61 @@ function nearestFrame(pos){
   return frames[best];
 }
 
+/* v10: per-wheel contact + spring-damper suspension.
+   Car origin still rides the centre contact (keeps the v9 planted-gap guarantee); the chassis is aimed along the
+   rear→front contact chord, each wheel hub sits on its OWN contact point, and the sprung body (heave + pitch) runs a
+   per-axle spring-damper driven by real load: gravity·n + v²·κ (loop bottoms squat, crests unload), accel squat,
+   brake dive, ground lean and landing impacts. */
+const susp = { cF:SUSP.sag, cR:SUSP.sag, vF:0, vR:0, hF:0, hR:0, loadF:1, loadR:1, spin:0, peak:0, kicks:0 };
+const _sF=makeFrame(), _sR=makeFrame(), _sC=makeFrame(), _sA=makeFrame(), _sB=makeFrame(), _sG=makeFrame();
+const _st=new THREE.Vector3(), _sn=new THREE.Vector3(), _sb=new THREE.Vector3(), _sm4=new THREE.Matrix4(), _sv=new THREE.Vector3();
+const _af=new THREE.Vector3(), _ab=new THREE.Vector3(), _au=new THREE.Vector3(), _ar=new THREE.Vector3(), _aq=new THREE.Quaternion();
+const _thrFr = { pos:null, tangent:null, normal:null, binormal:null };
+function axleLoad(seg, sAx, f, speed){
+  sampleInto(seg, sAx-0.7, _sA); sampleInto(seg, sAx+0.7, _sB);
+  _sv.subVectors(_sB.tangent, _sA.tangent).multiplyScalar(1/1.4); // dT/ds = κ·N
+  const kn = _sv.dot(f.normal);
+  return Math.max(-0.6, Math.min(3.6, f.normal.y + speed*speed*kn/GRAV));
+}
+function orientGrounded(seg, fr){
+  // chord between the two axle contacts → chassis pitch follows the road under BOTH axles (ramp toes, crests, loop entries)
+  sampleInto(seg, car.s + SUSP.axF, _sF); sampleInto(seg, car.s - SUSP.axR, _sR);
+  _st.subVectors(_sF.pos, _sR.pos); if(_st.lengthSq() < 1e-6) _st.copy(fr.tangent); _st.normalize();
+  _sn.copy(fr.normal).addScaledVector(_st, -fr.normal.dot(_st)).normalize();
+  _sb.crossVectors(_st, _sn); // right-handed basis (x=forward, y=up, z=x×y)
+  _sm4.makeBasis(_st, _sn, _sb); car.quat.setFromRotationMatrix(_sm4);
+  const sc = carVisual.baseScale || 0.85;
+  susp.hF = _sv.subVectors(_sF.pos, car.pos).dot(_sn)/sc + RIDE/sc; // per-wheel contact height in car-local units
+  susp.hR = _sv.subVectors(_sR.pos, car.pos).dot(_sn)/sc + RIDE/sc;
+}
+function suspStep(dt, grounded, lean, seg){
+  let tF, tR, k, d;
+  if(grounded){
+    susp.loadF = axleLoad(seg, car.s + SUSP.axF, _sF, car.speed);
+    susp.loadR = axleLoad(seg, car.s - SUSP.axR, _sR, car.speed);
+    let wt = 0; // + = weight to the nose
+    if(input.brake && car.speed > 0.5) wt += 0.05; else if(input.gas) wt -= 0.035;
+    wt += 0.035 * Math.max(-1, Math.min(1, lean));
+    tF = SUSP.sag*susp.loadF + wt; tR = SUSP.sag*susp.loadR - wt; k = SUSP.k; d = SUSP.d;
+  } else {
+    susp.hF += (0 - susp.hF)*Math.min(1, dt*12); susp.hR += (0 - susp.hR)*Math.min(1, dt*12);
+    tF = tR = SUSP.droop; k = SUSP.kAir; d = SUSP.dAir;
+  }
+  tF = Math.max(SUSP.droop, Math.min(SUSP.maxC, tF)); tR = Math.max(SUSP.droop, Math.min(SUSP.maxC, tR));
+  susp.vF += (k*(tF - susp.cF) - d*susp.vF)*dt; susp.cF += susp.vF*dt;
+  susp.vR += (k*(tR - susp.cR) - d*susp.vR)*dt; susp.cR += susp.vR*dt;
+  if(susp.cF > SUSP.maxC){ susp.cF = SUSP.maxC; if(susp.vF>0) susp.vF *= -0.25; } // bump stop
+  if(susp.cR > SUSP.maxC){ susp.cR = SUSP.maxC; if(susp.vR>0) susp.vR *= -0.25; }
+  if(susp.cF < SUSP.droop){ susp.cF = SUSP.droop; if(susp.vF<0) susp.vF = 0; }
+  if(susp.cR < SUSP.droop){ susp.cR = SUSP.droop; if(susp.vR<0) susp.vR = 0; }
+  susp.peak = Math.max(susp.peak*0.995, susp.cF, susp.cR);
+  susp.spin += car.speed*dt/(SUSP.wheelR*(carVisual.baseScale||0.85));
+}
+function suspKick(impact, pitch){ // landing: velocity into the springs → visible squat + 1–2 decaying rebounds
+  const imp = Math.min(3.4, 0.9 + impact*0.06);
+  const nose = pitch < -0.12 ? 1.35 : pitch > 0.12 ? 0.7 : 1; // nose-first landings hit the front axle harder
+  susp.vF += imp*nose; susp.vR += imp*(2-nose); susp.kicks++;
+}
 function physicsStep(dt){
   if(state.mode!=='play' || !state.framesData) return;
   const lean = effectiveLean();
@@ -1434,7 +1640,7 @@ function physicsStep(dt){
 
   if(car.grounded){
     { // v9: accel curve (strong off the line, tapering near top speed) + slope gravity (climbs cost speed)
-      const sf = sampleSegment(state.framesData.segs[car.segIndex]||state.framesData.segs[0], car.s);
+      const sf = sampleInto(state.framesData.segs[car.segIndex]||state.framesData.segs[0], car.s, _sG);
       if(input.gas) car.speed = Math.min(MAX_SPEED, car.speed + ACCEL*(1 - 0.65*Math.max(0,car.speed)/MAX_SPEED)*dt);
       car.speed -= GRAV * 0.35 * sf.tangent.y * dt;
       car.speed -= car.speed * 0.04 * dt; // rolling/air drag
@@ -1463,7 +1669,7 @@ function physicsStep(dt){
     car.s += car.speed * dt;
     if(car.s < 0){ car.s = 0; car.speed = 0; }
     // v7 JUMP FIX: launch off ramp lips (was glued to the down-slope = no jump)
-    const lipS = (seg.lips||[]).find(ls => prevS < ls && car.s >= ls);
+    let lipS; { const lp=seg.lips; if(lp) for(let li=0;li<lp.length;li++){ const ls=lp[li]; if(prevS < ls && car.s >= ls){ lipS=ls; break; } } } // v10: no closure per step
     if(lipS !== undefined && car.speed > 5){
       const lf = sampleSegment(seg, lipS);
       const dirF = sampleSegment(seg, Math.max(0, lipS - 1.2)); // ramp face direction
@@ -1508,25 +1714,27 @@ function physicsStep(dt){
       if(input.thrust && state.fuel>0) emitThrust(fr);
     } else {
       // On-rails: stick to track (Stunt Paradise feel). Optional hop with thrust on crests.
-      const fr = sampleSegment(seg, car.s);
-      car.pos.copy(fr.pos).add(fr.normal.clone().multiplyScalar(RIDE));
+      const fr = sampleInto(seg, car.s, _sC);
+      car.pos.copy(fr.pos).addScaledVector(fr.normal, RIDE);
       car.pitch *= 0.8;
       car.pitchVel = 0;
       car.airTime = 0;
-      orientCar(fr, 0);
+      orientGrounded(seg, fr);
+      suspStep(dt, true, lean, seg);
       if((fr.normal.y < -0.3 && Math.abs(car.speed) < 11) || (fr.normal.y < 0.25 && Math.abs(fr.tangent.y) > 0.6 && Math.abs(car.speed) < 6)){ // v9: too slow upside-down in a loop → wheels lose grip, drop off
         car.grounded=false; car.lipLaunch=true; car.airGrace=0.4; car.loopDrop=true; car.loopDropT=1.6; car.vel.addScaledVector(fr.normal, -2);
         car.vel.copy(fr.tangent).multiplyScalar(car.speed); car.pitch=0; car.pitchVel=0; car.flipAcc=0;
         return;
       }
-      for(const bp of (state.level && state.level.bouncePads || [])){
+      for(const bp of (state.level && state.level.bouncePads || _EMPTY)){
         if(state.padsUsed && !state.padsUsed.has(bp) && Math.abs(car.pos.x-bp.x) < 1.4 && Math.abs(car.pos.y-bp.y) < 3){
           state.padsUsed.add(bp);
           car.grounded=false; car.lipLaunch=true; car.airGrace=0.35;
           car.vel.copy(fr.tangent).multiplyScalar(Math.min(26, Math.max(14, car.speed*0.8)));
           car.vel.y = bp.kind==='box' ? 24 : 19; car.pitch=0; car.pitchVel=0; car.flipAcc=0;
           state.jumps=(state.jumps||0)+1; state.padHits=(state.padHits||0)+1; state.shake=Math.max(state.shake,0.25);
-          if(audio.boost) audio.boost(); haptic(15);
+          susp.vF -= 2.2; susp.vR -= 2.2; // springs unload as the pad fires
+          if(bp.kind==='box') boomBox(bp, fr); else { if(audio.boost) audio.boost(); haptic(15); }
           return;
         }
       }
@@ -1534,8 +1742,8 @@ function physicsStep(dt){
         emitThrust(fr);
       }
       if(car.speed > 28 && Math.random()<0.4){
-        const back = car.pos.clone().add(fr.tangent.clone().multiplyScalar(-1.2));
-        spawnParticle(back.x, back.y, back.z, -fr.tangent.x*6, 0.5, -fr.tangent.z*6, 0.2, 0.7, 0.85, 1.0);
+        const bx=car.pos.x-fr.tangent.x*1.2, by=car.pos.y-fr.tangent.y*1.2, bz=car.pos.z-fr.tangent.z*1.2;
+        spawnParticle(bx, by, bz, -fr.tangent.x*6, 0.5, -fr.tangent.z*6, 0.2, 0.7, 0.85, 1.0);
       }
     }
 
@@ -1566,36 +1774,37 @@ function physicsStep(dt){
     car.vel.y -= GRAV * dt;
     // thruster
     const frApprox = nearestFrame(car.pos);
-    const forward = frApprox.tangent.clone();
+    const forward = _af.copy(frApprox.tangent);
     // apply pitch to thrust direction
-    const bin = frApprox.binormal.clone();
-    const q = new THREE.Quaternion().setFromAxisAngle(bin, car.pitch);
+    const bin = _ab.copy(frApprox.binormal);
+    const q = _aq.setFromAxisAngle(bin, car.pitch);
     forward.applyQuaternion(q);
-    const up = frApprox.normal.clone().applyQuaternion(q);
+    const up = _au.copy(frApprox.normal).applyQuaternion(q);
     if(input.thrust && state.fuel>0){ // v9 ROCKET: lift beats gravity → hover/float ONLY while rocket burns
       car.vel.addScaledVector(forward, THRUST_FORCE*0.5*dt);
       car.vel.y += (car.vel.y < 9 ? GRAV*1.12 : GRAV)*dt; // net lift up to 9 u/s, then pure hover
-      emitThrust({pos:car.pos, tangent:forward, normal:up, binormal:bin});
+      _thrFr.pos=car.pos; _thrFr.tangent=forward; _thrFr.normal=up; _thrFr.binormal=bin; emitThrust(_thrFr);
     }
-    if(input.gas) car.vel.add(forward.clone().normalize().multiplyScalar(ACCEL*0.25*dt));
+    if(input.gas) car.vel.addScaledVector(forward, ACCEL*0.25*dt);
     if(input.brake) car.vel.multiplyScalar(1 - 1.2*dt);
 
     car.pos.addScaledVector(car.vel, dt);
     // soft air-right near ground
     const near = nearestFrame(car.pos);
-    const rel = car.pos.clone().sub(near.pos);
+    const rel = _ar.copy(car.pos).sub(near.pos);
     const height = rel.dot(near.normal);
     const lateral = Math.abs(rel.dot(near.binormal));
     if(height < 5 && height > -1){
       car.pitchVel += (-car.pitch)*1.2*dt; // softer auto-right
     }
     orientCar(near, car.pitch);
+    suspStep(dt, false, lean, null);
 
     // Landing / crash — ignore while airGrace (just launched)
     if(car.airGrace <= 0){
     // Magnetize toward track when close
     if(height < 2.0 && height > -1.5 && lateral < TRACK_W * 0.85 && !(input.thrust && state.fuel>0) && !(car.loopDropT>0)){
-      car.vel.add(near.normal.clone().multiplyScalar(Math.max(0, (RIDE + 0.25 - height) * 18 * dt)));
+      car.vel.addScaledVector(near.normal, Math.max(0, (RIDE + 0.25 - height) * 18 * dt));
     }
     if(height < RIDE + 0.45 && height > -2.0 && lateral < TRACK_W * 0.8 && !(car.loopDropT>0 && near.normal.y < 0.7)){
       const impact = Math.max(0, -car.vel.dot(near.normal));
@@ -1620,15 +1829,15 @@ function physicsStep(dt){
         car.pitch=0; car.pitchVel=0; car.flipAcc=0;
         car.pos.copy(landFr.pos).add(landFr.normal.clone().multiplyScalar(RIDE));
         const clean = impact < 16 && Math.abs(landPitch)<0.5;
-        state.squash = (clean ? 0.78 : 0.58) + Math.min(0.38, impact/36);
+        state.squash = (clean ? 0.78 : 0.58) + Math.min(0.38, impact/36); suspKick(impact, landPitch); // v10: springs, not mesh squash
         state.fovPunch = Math.min(1, state.fovPunch + (clean ? 0.62 : 0.42) + impact*0.012);
         if(clean){
           state.cleanLands++;
           addScore(90 + Math.floor(car.airTime*70), 'CLEAN!', 'combo');
-          audio.land(); haptic(14);
+          audio.land(Math.min(1, impact/40)); haptic(14);
           state.shake = Math.max(state.shake, 0.38 + Math.min(0.28, impact/40));
         } else {
-          audio.land();
+          audio.land(Math.min(1, 0.4+impact/40));
           state.shake = Math.max(state.shake, 0.28);
           addScore(30, 'LAND');
         }
@@ -1647,7 +1856,7 @@ function physicsStep(dt){
   }
 
   // Pickups
-  for(const star of (state.level._starMeshes||[])){
+  for(const star of (state.level._starMeshes||_EMPTY)){
     if(star.userData.taken) continue;
     star.rotation.y += dt*2.5; star.rotation.x += dt*1.2;
     star.position.y = star.userData.base.y + Math.sin(performance.now()/300)*0.25;
@@ -1657,7 +1866,18 @@ function physicsStep(dt){
       addScore(150, 'STAR!'); audio.star(); haptic(10);
     }
   }
-  for(const sm of (state.level._smashMeshes||[])){
+  { const gs = state.level._gold;
+    if(gs && !gs.userData.taken){
+      gs.rotation.y += dt*2.2; gs.position.y = gs.userData.base.y + Math.sin(performance.now()/380)*0.22;
+      if(gs.position.distanceToSquared(car.pos) < 3.0*3.0){
+        gs.userData.taken=true; gs.visible=false; state.goldGot=true;
+        state.fuel=Math.min(1, state.fuel+0.35); addScore(500, 'GOLD STAR!', 'combo'); audio.gold(); haptic(25);
+        state.fovPunch=Math.min(1, state.fovPunch+0.3);
+        for(let i=0;i<40;i++){ const a=Math.random()*Math.PI*2; spawnParticle(gs.position.x, gs.position.y, gs.position.z, Math.cos(a)*9, Math.sin(a)*9, (Math.random()-0.5)*4, 0.8, 1, 0.82, 0.25); }
+      }
+    }
+  }
+  for(const sm of (state.level._smashMeshes||_EMPTY)){
     if(sm.userData.smashed) continue;
     sm.rotation.y += dt*0.8;
     if(sm.position.distanceTo(car.pos) < 1.35 + (sm.userData.r||0)*0.3){
@@ -1675,7 +1895,7 @@ function physicsStep(dt){
   }
 
   // Checkpoint rings
-  for(const gate of (state.level._cpMeshes||[])){
+  for(const gate of (state.level._cpMeshes||_EMPTY)){
     if(gate.userData.taken) continue;
     gate.rotation.z += dt*1.2;
     if(gate.position.distanceTo(car.pos) < 3.4){
@@ -1687,7 +1907,7 @@ function physicsStep(dt){
         s: gate.userData.s,
         segIndex: gate.userData.segIndex||0,
         fuelFloor: Math.max(0.45, state.fuel*0.85),
-        levelIndex: state.levelIndex
+        levelIndex: state.levelIndex, coins: state.coins||0, gold: !!state.goldGot
       };
       state.fuel = Math.min(1, state.fuel + 0.18);
       addScore(250, 'CHECKPOINT!', 'checkpoint');
@@ -1698,7 +1918,7 @@ function physicsStep(dt){
   }
 
   // Ground boost pads
-  for(const pad of (state.level._boostMeshes||[])){
+  for(const pad of (state.level._boostMeshes||_EMPTY)){
     if(pad.userData.cool > 0){
       pad.userData.cool -= dt;
       pad.visible = pad.userData.cool <= 0;
@@ -1727,14 +1947,14 @@ function physicsStep(dt){
   }
 
   // Mid-air route markers — bob + spin (non-lethal visual cues)
-  for(const rm of (state.level._routeMeshes||[])){
+  for(const rm of (state.level._routeMeshes||_EMPTY)){
     const t = performance.now()/1000 + (rm.userData.phase||0);
     rm.position.y = rm.userData.base.y + Math.sin(t*2.2)*0.35;
     rm.rotation.y += dt*1.6;
   }
 
   // Kid-safe spectacle props — animate; soft bounce / score pop only
-  for(const pr of (state.level._propMeshes||[])){
+  for(const pr of (state.level._propMeshes||_EMPTY)){
     const ud = pr.userData;
     const t = performance.now()/1000 + (ud.phase||0);
     if(ud.type==='balloon'){
@@ -1794,10 +2014,9 @@ function physicsStep(dt){
   updateHUD();
 }
 
+const _eb = new THREE.Vector3();
 function emitThrust(fr){
-  const back = car.pos.clone()
-    .add(fr.tangent.clone().multiplyScalar(-1.35))
-    .add(fr.normal.clone().multiplyScalar(0.15));
+  const back = _eb.copy(car.pos).addScaledVector(fr.tangent, -1.35).addScaledVector(fr.normal, 0.15);
   for(let i=0;i<12;i++){
     const side = (i/11 - 0.5) * 1.4;
     const spread = (Math.random()-0.5)*2.5;
@@ -1856,9 +2075,12 @@ function updateCamera(dt){
   const pos = carVisual.group.position; // interpolated render position
   const vx = car.grounded ? (car.vel && car.vel.x || car.speed) : car.vel.x;
   const ahead = Math.max(-6, Math.min(9, (Math.sign(car.speed||1)) * (3 + Math.abs(car.speed)*0.14)));
-  const dist = 21 + Math.min(7, Math.abs(car.speed) * 0.12) + (car.grounded ? 0 : 2.5);
-  _cv.tp.set(pos.x + ahead*0.7, pos.y + 3.2, pos.z + dist);
-  _cv.lt.set(pos.x + ahead, pos.y + 1.0, pos.z);
+  let cineK = 0; // v10: set-piece camera swoop (pull back + rise + trail, eased in/out; still a fixed-up side camera)
+  if(state.cine){ state.cine.t += dt; const u = state.cine.t/state.cine.dur; if(u>=1 || state.mode!=='play') state.cine=null; else { const k=Math.sin(Math.PI*u); cineK = k*k*(3-2*k); } }
+  state.cineK = cineK;
+  const dist = 21 + Math.min(7, Math.abs(car.speed) * 0.12) + (car.grounded ? 0 : 2.5) + 10*cineK;
+  _cv.tp.set(pos.x + ahead*0.7 - 6*cineK, pos.y + 3.2 + 4.5*cineK, pos.z + dist);
+  _cv.lt.set(pos.x + ahead, pos.y + 1.0 + 1.2*cineK, pos.z);
   if(!_cv.init){ camState.pos.copy(_cv.tp); camState.look.copy(_cv.lt); _cv.init=true; }
   camState.pos.x += (_cv.tp.x - camState.pos.x) * damp(7, dt);
   camState.pos.y += (_cv.tp.y - camState.pos.y) * damp(car.grounded?4.5:3, dt);
@@ -1894,7 +2116,7 @@ let acc=0, last=performance.now();
 const _prevPos = new THREE.Vector3(), _prevQuat = new THREE.Quaternion();
 function frame(now){
   const raw=Math.min(0.05, (now-last)/1000); last=now;
-  if(state.slowmo>0){ state.slowmo-=raw; } const ts = state.slowmo>0 ? 0.45 : 1;
+  if(state.slowmo>0){ state.slowmo-=raw; if(state.slowmo<=0) state.slowmoScale=0.45; } const ts = state.slowmo>0 ? (state.slowmoScale||0.45) : 1;
   acc+=raw*ts;
   while(acc>=DT){ _prevPos.copy(car.pos); _prevQuat.copy(car.quat); physicsStep(DT); acc-=DT; }
   if(state.mode==='play'){ // v8: interpolate render between physics ticks (120Hz ProMotion judder fix)
@@ -1913,10 +2135,13 @@ function frame(now){
     carVisual.group.position.copy(car.pos);
     camera.position.copy(camState.pos); camera.lookAt(camState.look);
   }
-  // Soft landing squash
-  const bs = carVisual.baseScale || 0.85;
-  const sq = state.squash || 0;
-  carVisual.group.scale.set(bs*(1+sq*0.16), bs*(1-sq*0.34), bs*(1+sq*0.16));
+  // v10: sprung body (heave + pitch) on per-wheel hubs — replaces the v9 non-uniform mesh squash
+  if(state.mode==='play' || state.mode==='pause' || state.mode==='grade' || state.mode==='fail'){
+    const B=carVisual.body; B.position.y = SUSP.lift - (susp.cF+susp.cR)*0.5; B.rotation.z = (susp.cR - susp.cF)/SUSP.wb;
+    for(const h of carVisual.hubs){ h.hub.position.y = h.baseY + (h.front ? susp.hF : susp.hR); h.hub.rotation.z = -susp.spin; }
+  } else { carVisual.body.position.y = SUSP.lift - SUSP.sag; carVisual.body.rotation.z = 0; for(const h of carVisual.hubs){ h.hub.position.y=h.baseY; } }
+  updateCoins(raw);
+  audio.engine(state.mode==='play' && !document.hidden, car.speed, !!input.gas, car.grounded, !!(input.thrust && state.fuel>0 && state.mode==='play'));
   for(const n of carVisual.nozzles){
     n.material.emissiveIntensity = (input.thrust && state.fuel>0 && state.mode==='play') ? 1.2 : 0.25;
   }
@@ -1931,14 +2156,14 @@ const _shCv=document.createElement('canvas'); _shCv.width=_shCv.height=64;
 { const x=_shCv.getContext('2d'); const g=x.createRadialGradient(32,32,2,32,32,31); g.addColorStop(0,'rgba(0,0,0,0.75)'); g.addColorStop(0.6,'rgba(0,0,0,0.35)'); g.addColorStop(1,'rgba(0,0,0,0)'); x.fillStyle=g; x.fillRect(0,0,64,64); }
 const contactShadow = new THREE.Mesh(new THREE.PlaneGeometry(4.6,2.6), new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(_shCv), transparent:true, depthWrite:false, polygonOffset:true, polygonOffsetFactor:-2}));
 contactShadow.renderOrder=2; scene.add(contactShadow);
-const _shM=new THREE.Matrix4(), _shV=new THREE.Vector3();
+const _shM=new THREE.Matrix4(), _shV=new THREE.Vector3(), _shB=new THREE.Vector3(), _shF=makeFrame();
 function updateContactShadow(){
   if(state.mode!=='play' && state.mode!=='pause' && state.mode!=='paused'){ contactShadow.visible=false; return; }
-  const n = car.grounded ? sampleSegment(state.framesData.segs[car.segIndex]||state.framesData.segs[0], car.s) : nearestFrame(car.pos);
+  const n = car.grounded ? sampleInto(state.framesData.segs[car.segIndex]||state.framesData.segs[0], car.s, _shF) : nearestFrame(car.pos);
   const h = _shV.copy(carVisual.group.position).sub(n.pos).dot(n.normal);
   if(h < -1 || h > 14){ contactShadow.visible=false; return; }
   contactShadow.visible=true;
-  _shM.makeBasis(n.tangent, n.binormal.clone().negate(), n.normal); contactShadow.quaternion.setFromRotationMatrix(_shM);
+  _shM.makeBasis(n.tangent, _shB.copy(n.binormal).negate(), n.normal); contactShadow.quaternion.setFromRotationMatrix(_shM);
   contactShadow.position.copy(n.pos).addScaledVector(n.normal, 0.03);
   const k = Math.max(0.25, 1 - h/10); contactShadow.scale.set(k,k,1); contactShadow.material.opacity = k;
 }
@@ -1967,11 +2192,20 @@ requestAnimationFrame(frame);
 
 // Expose for smoke tests
 window.__RSP = {
-  version:9, _sample:sampleSegment, screen:()=>{const v=carVisual.group.position.clone().project(camera); return {x:(v.x+1)/2*innerWidth,y:(1-v.y)/2*innerHeight};}, pads:()=>({hits:state.padHits||0, n:(state.level&&state.level.bouncePads||[]).length}), loops:()=>state.framesData.segs.map(sg=>{const r=[];let inL=false,st=0;const N=Math.ceil(sg.length);for(let i=0;i<=N;i++){const f=sampleSegment(sg,Math.min(sg.length,i));if(f.normal.y<-0.5&&!inL){inL=true;st=i;} if(f.normal.y>-0.5&&inL){inL=false;r.push([st,i]);}}return r;}), perf:()=>({calls:renderer.info.render.calls, tris:renderer.info.render.triangles, dpr:dprNow}), levels:LEVELS.length, startLevel, showTitle, showSelect, state, car,
+  version:10, _sample:sampleSegment, susp:()=>({cF:susp.cF, cR:susp.cR, vF:susp.vF, vR:susp.vR, hF:susp.hF, hR:susp.hR, loadF:susp.loadF, loadR:susp.loadR, peak:susp.peak, kicks:susp.kicks, bodyY:carVisual.body.position.y, bodyPitch:carVisual.body.rotation.z, scale:carVisual.group.scale.toArray()}),
+  wheelGaps:()=>{ if(!car.grounded) return null; const seg=state.framesData.segs[car.segIndex]; const sc=carVisual.baseScale||0.85; const out={};
+    for(const h of carVisual.hubs){ if(h.hub.position.z<0) continue; const w=new THREE.Vector3(h.hub.position.x, h.baseY+(h.front?susp.hF:susp.hR), 0).multiplyScalar(sc).applyQuaternion(car.quat).add(car.pos);
+      const upv=new THREE.Vector3(0,1,0).applyQuaternion(car.quat); w.addScaledVector(upv, -SUSP.wheelR*sc);
+      const f=sampleSegment(seg, car.s + (h.front?SUSP.axF:-SUSP.axR)); out[h.front?'front':'rear']=w.sub(f.pos).dot(f.normal); }
+    return out; },
+  coins:()=>{ const c=state.level&&state.level._coins; return {got:state.coins||0, n:c?c.n:0, gold:!!state.goldGot, hasGold:!!(state.level&&state.level.gold), goldPos:state.level&&state.level._gold?state.level._gold.userData.base.toArray():null}; },
+  axes:()=>{ const q=car.quat; const ax=v=>new THREE.Vector3(...v).applyQuaternion(q).toArray().map(x=>+x.toFixed(3)); const seg=state.framesData.segs[car.segIndex]; const f=sampleSegment(seg,car.s); const sF=sampleSegment(seg,car.s+SUSP.axF), sR=sampleSegment(seg,car.s-SUSP.axR); return {x:ax([1,0,0]), y:ax([0,1,0]), z:ax([0,0,1]), t:f.tangent.toArray().map(x=>+x.toFixed(3)), n:f.normal.toArray().map(x=>+x.toFixed(3)), b:f.binormal.toArray().map(x=>+x.toFixed(3)), chord:sF.pos.clone().sub(sR.pos).normalize().toArray().map(x=>+x.toFixed(3)), dF:+sF.pos.distanceTo(f.pos).toFixed(3)}; },
+  cine:()=>({active:!!state.cine, k:state.cineK||0, count:state.cineCount||0, slowmo:state.slowmo||0, scale:state.slowmoScale}),
+  engine:()=>audio.engineLevel(), particles:()=>({pool:particles.length, live:particles.reduce((a,p)=>a+(p.life>0?1:0),0)}), screen:()=>{const v=carVisual.group.position.clone().project(camera); return {x:(v.x+1)/2*innerWidth,y:(1-v.y)/2*innerHeight};}, pads:()=>({hits:state.padHits||0, n:(state.level&&state.level.bouncePads||[]).length}), loops:()=>state.framesData.segs.map(sg=>{const r=[];let inL=false,st=0;const N=Math.ceil(sg.length);for(let i=0;i<=N;i++){const f=sampleSegment(sg,Math.min(sg.length,i));if(f.normal.y<-0.5&&!inL){inL=true;st=i;} if(f.normal.y>-0.5&&inL){inL=false;r.push([st,i]);}}return r;}), perf:()=>({calls:renderer.info.render.calls, tris:renderer.info.render.triangles, dpr:dprNow}), levels:LEVELS.length, startLevel, showTitle, showSelect, state, car,
   getScore:()=>state.score, getMode:()=>state.mode, getStars:()=>state.starGrade, input,
   cam:()=>({x:camera.position.x,y:camera.position.y,z:camera.position.z,qx:camera.quaternion.x,qy:camera.quaternion.y,qz:camera.quaternion.z,qw:camera.quaternion.w}),
   lips:()=>state.framesData.segs.map((sg,i,all)=>(sg.lips||[]).concat(i<all.length-1?[sg.length-0.3]:[])),
-  probe:()=>{ const n=nearestFrame(car.pos); return {g:car.grounded, seg:car.segIndex, s:car.s, x:car.pos.x, y:car.pos.y,
+  probe:()=>{ const n=nearestFrame(car.pos); const rf=car.grounded?sampleSegment(state.framesData.segs[car.segIndex]||state.framesData.segs[0], car.s):null; return {gapRail: rf? car.pos.clone().sub(rf.pos).dot(rf.normal)-0.034 : null, g:car.grounded, seg:car.segIndex, s:car.s, x:car.pos.x, y:car.pos.y,
      h:car.pos.clone().sub(n.pos).dot(n.normal)-RIDE, gap:car.pos.clone().sub(n.pos).dot(n.normal)-0.034, rocket:!!(input.thrust&&state.fuel>0), fuel:state.fuel, calls:renderer.info.render.calls, tris:renderer.info.render.triangles, nx:n.pos.x, ny:n.pos.y, nny:n.normal.y, lip:!!car.lipLaunch, mode:state.mode, why:state.failReason, dbg:state.failDbg, jumps:state.jumps||0, speed:car.speed}; }
 };
 </script>
