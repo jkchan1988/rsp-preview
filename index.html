@@ -179,7 +179,8 @@ const audio = (()=>{
     gold(){ tone(784,0.1,'triangle',0.14); setTimeout(()=>tone(1046,0.1,'triangle',0.14),80); setTimeout(()=>tone(1568,0.3,'sine',0.14),160); noise(0.2,0.06); },
     boom(){ noise(0.55,0.4); tone(70,0.5,'sine',0.3,-40); tone(140,0.25,'sawtooth',0.16,-90); setTimeout(()=>{ tone(900,0.12,'triangle',0.08); tone(1350,0.16,'sine',0.06); },120); },
     ui(){ tone(660,0.06,'triangle',0.08); },
-    fan(){ noise(0.45,0.16); tone(180,0.4,'sine',0.07,260); }, // v11 wind fan whoosh
+    fan(){ noise(0.45,0.16); tone(180,0.4,'sine',0.07,260); },
+    creak(v=1){ noise(0.25,0.1*v); tone(140,0.3,'sawtooth',0.035*v,70); }, // v12 bridge crack + groan // v11 wind fan whoosh
     horn(){ tone(330,0.38,'square',0.06); tone(415,0.38,'square',0.05); setTimeout(()=>{ tone(330,0.5,'square',0.06); tone(415,0.5,'square',0.05); },450); }, // v11 toy train toot-toot
     thrust(){ noise(0.08,0.1); tone(90,0.12,'sawtooth',0.08,40); },
     boost(){ noise(0.15,0.14); tone(140,0.18,'sawtooth',0.12,120); tone(420,0.1,'sine',0.06); },
@@ -363,6 +364,8 @@ function addSetPieces(){ // v9: research set pieces — kid-safe bounce pad + po
   // v11 set pieces (research #7): giant WIND FANS that lift the car, and a toy TRAIN racing alongside
   LEVELS[1].fans=[{x:88,y:0}]; LEVELS[3].fans=[{x:161,y:1}]; LEVELS[5].fans=[{x:196,y:18}]; LEVELS[7].fans=[{x:413.9,y:0}];
   LEVELS[0].train=true; LEVELS[2].train=true; LEVELS[6].train=true;
+  // v12 COLLAPSING BRIDGES (research top-10 #7): rickety planks crumble away right behind the car
+  LEVELS[0].bridge=true; LEVELS[2].bridge=true; LEVELS[4].bridge=true; LEVELS[6].bridge=true;
 }
 (function buildLevels(){
   // 1 Desert Dawn — tutorial + corkscrew
@@ -909,7 +912,7 @@ function buildPickups(level, framesData){
     bp._mesh = m; m.visible = true;
     pickupGroup.add(m);
   }
-  buildFans(level, framesData); buildTrain(level, framesData);
+  buildFans(level, framesData); buildTrain(level, framesData); buildBridge(level, framesData);
   const starMat = new THREE.MeshStandardMaterial({ color:0xffd76a, emissive:0xffaa20, emissiveIntensity:0.8, metalness:0.4, roughness:0.3 });
   const barrelMat = new THREE.MeshStandardMaterial({ color:0xc03018, emissive:0x801000, emissiveIntensity:0.35, metalness:0.3, roughness:0.55 });
   const crateMat = new THREE.MeshStandardMaterial({ color:0xc8a050, emissive:0x403010, emissiveIntensity:0.15, metalness:0.15, roughness:0.7 });
@@ -1145,6 +1148,59 @@ function updateFans(dt){
   }
 }
 
+/* v12 COLLAPSING BRIDGE: wooden planks over the longest flat stretch; each plank drops and tumbles the moment
+   the car rolls past it (visual only: the road never vanishes, so it can't strand a kid). One InstancedMesh = 1 draw call. */
+const PLANK_GAP = 1.4, PLANK_MAX = 18;
+const plankGeo = new THREE.BoxGeometry(1.15, 0.16, TRACK_W*1.12);
+const plankMat = new THREE.MeshStandardMaterial({ color:0xa8743c, roughness:0.85, metalness:0.05, emissive:0x2a1406, emissiveIntensity:0.25 });
+const _bM = new THREE.Matrix4(), _bQ = new THREE.Quaternion(), _bE = new THREE.Euler(), _bS = new THREE.Vector3(1,1,1), _bP = new THREE.Vector3();
+function buildBridge(level, framesData){
+  level._bridge = null; if(!level.bridge) return;
+  const segs = framesData.segs, avoid = [];
+  for(const bp of (level.bouncePads||[])) avoid.push(bp.x); for(const f of (level.fans||[])) avoid.push(f.x); if(level.gold) avoid.push(level.gold.x);
+  let best = null;
+  for(const seg of segs){ // longest upright, level run (skips loops, ramps, the start line)
+    let run = null;
+    for(const f of seg.frames){
+      const ok = f.normal.y > 0.985 && f.tangent.x > 0.97 && seg.s0 + f.s > 24 && !avoid.some(x=>Math.abs(f.pos.x-x)<5);
+      if(ok){ if(!run) run = { seg, a:f, b:f }; else run.b = f; }
+      if(!ok || f === seg.frames[seg.frames.length-1]){ if(run && (!best || run.b.pos.x-run.a.pos.x > best.b.pos.x-best.a.pos.x)) best = run; if(!ok) run = null; }
+    }
+  }
+  if(!best || best.b.pos.x - best.a.pos.x < 9) return;
+  const x0 = best.a.pos.x + 1.5, n = Math.min(PLANK_MAX, Math.floor((best.b.pos.x - 1.5 - x0)/PLANK_GAP));
+  const mesh = new THREE.InstancedMesh(plankGeo, plankMat, n); mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); mesh.frustumCulled = false;
+  const planks = [];
+  for(let i=0;i<n;i++){
+    const x = x0 + i*PLANK_GAP, fr = nearestFrameToXY(framesData, x, best.a.pos.y);
+    const p = { x:fr.pos.x, y:fr.pos.y + 0.1, z:fr.pos.z, vy:0, rx:0, rz:0, wx:0, wz:0, fall:false, t:0, gone:false };
+    planks.push(p); _bE.set(0,0,(i%3-1)*0.03); _bQ.setFromEuler(_bE); _bP.set(p.x,p.y,p.z); _bM.compose(_bP,_bQ,_bS); mesh.setMatrixAt(i,_bM);
+  }
+  pickupGroup.add(mesh);
+  level._bridge = { mesh, planks, x0:planks[0].x, x1:planks[n-1].x, fallen:0, announced:false, done:false, cleared:false };
+}
+function updateBridge(dt){
+  const b = state.level && state.level._bridge; if(!b || b.done) return;
+  let dirty = false;
+  for(let i=0;i<b.planks.length;i++){
+    const p = b.planks[i];
+    if(!p.fall && car.pos.x > p.x + 1.2 && car.pos.x < p.x + 30 && Math.abs(car.pos.y - p.y) < 6){
+      p.fall = true; p.t = 0; p.vy = 1.2 + Math.random()*1.2; p.wx = (Math.random()-0.5)*5; p.wz = (Math.random()-0.5)*4; b.fallen++; dirty = true;
+      spawnParticle(p.x, p.y, p.z + (Math.random()-0.5)*3, (Math.random()-0.5)*2, 1.5, (Math.random()-0.5)*2, 0.5, 0.75, 0.55, 0.32);
+      if(!b.announced){ b.announced = true; if(audio.creak) audio.creak(); popup('RICKETY BRIDGE — GO GO GO!', 'pop'); state.shake = Math.max(state.shake, 0.18); haptic(12); }
+      else if(b.fallen % 4 === 0 && audio.creak) audio.creak(0.5);
+    }
+    if(p.fall && !p.gone){
+      p.t += dt; p.vy -= 22*dt; p.y += p.vy*dt; p.rx += p.wx*dt; p.rz += p.wz*dt; dirty = true;
+      if(p.t > 2.2){ p.gone = true; _bS.set(0,0,0); }
+      _bE.set(p.rx, 0, p.rz); _bQ.setFromEuler(_bE); _bP.set(p.x, p.y, p.z); _bM.compose(_bP,_bQ,_bS); b.mesh.setMatrixAt(i,_bM); _bS.set(1,1,1);
+    }
+  }
+  if(!b.cleared && b.fallen === b.planks.length && car.pos.x > b.x1 + 1.5){ b.cleared = true; state.bridgeRuns = (state.bridgeRuns||0)+1; addScore(150, 'BRIDGE RUN!', 'pop'); }
+  if(dirty) b.mesh.instanceMatrix.needsUpdate = true;
+  if(b.cleared && b.planks.every(p=>p.gone)) b.done = true;
+}
+
 /* v11 TOY TRAIN: races alongside the track behind it (research #7 "a train running alongside"); one rail + two meshes */
 const trainBodyMat = new THREE.MeshStandardMaterial({ color:0xd8402c, metalness:0.3, roughness:0.5, emissive:0x401008, emissiveIntensity:0.3 });
 const trainTrimMat = new THREE.MeshStandardMaterial({ color:0x2a2e3a, metalness:0.6, roughness:0.4 });
@@ -1368,7 +1424,7 @@ function startLevel(idx, endless=false, fromCheckpoint=false){
   car.vel.set(0,0,0);
   orientCar(fr, 0);
   if(keepCp) state.lastCheckpoint = keepCp;
-  ghostStart(idx, endless, !!keepCp); state.fanHits = 0; state.fanPeak = 0;
+  ghostStart(idx, endless, !!keepCp); state.fanHits = 0; state.fanPeak = 0; state.bridgeRuns = 0;
   if(level._train){ level._train.x = car.pos.x - 18; level._train.speed = 0; level._train.honked=false; level._train.alongside=0; level._train.g.position.x = level._train.x; }
 
   showPlayUI(true);
@@ -2268,10 +2324,13 @@ function frame(now){
   }
   // v10: sprung body (heave + pitch) on per-wheel hubs — replaces the v9 non-uniform mesh squash
   if(state.mode==='play' || state.mode==='pause' || state.mode==='grade' || state.mode==='fail'){
-    const B=carVisual.body; B.position.y = SUSP.lift - (susp.cF+susp.cR)*0.5; B.rotation.z = (susp.cR - susp.cF)/SUSP.wb;
+    const B=carVisual.body; B.position.y = SUSP.lift - (susp.cF+susp.cR)*0.5;
+    // v12 GROUND LEAN (research top-10): holding lean on the ground visibly rocks the body (back = nose up, forward = nose down)
+    const gl = (car.grounded && state.mode==='play') ? -effectiveLean()*0.075 : 0; state.gLean = (state.gLean||0) + (gl - (state.gLean||0))*damp(9, raw);
+    B.rotation.z = (susp.cR - susp.cF)/SUSP.wb + state.gLean;
     for(const h of carVisual.hubs){ h.hub.position.y = h.baseY + (h.front ? susp.hF : susp.hR); h.hub.rotation.z = -susp.spin; }
   } else { carVisual.body.position.y = SUSP.lift - SUSP.sag; carVisual.body.rotation.z = 0; for(const h of carVisual.hubs){ h.hub.position.y=h.baseY; } }
-  updateCoins(raw); if(state.mode==='play'){ updateFans(raw); updateTrain(raw); } updateGhost();
+  updateCoins(raw); if(state.mode==='play'){ updateFans(raw); updateTrain(raw); updateBridge(raw); } updateGhost();
   audio.engine(state.mode==='play' && !document.hidden, car.speed, !!input.gas, car.grounded, !!(input.thrust && state.fuel>0 && state.mode==='play'));
   for(const n of carVisual.nozzles){
     n.material.emissiveIntensity = (input.thrust && state.fuel>0 && state.mode==='play') ? 1.2 : 0.25;
@@ -2323,7 +2382,9 @@ requestAnimationFrame(frame);
 
 // Expose for smoke tests
 window.__RSP = {
-  version:11, _sample:sampleSegment,
+  version:12, _sample:sampleSegment,
+  bridge:()=>{ const b=state.level&&state.level._bridge; return b?{n:b.planks.length, x0:+b.x0.toFixed(1), x1:+b.x1.toFixed(1), fallen:b.fallen, cleared:b.cleared, runs:state.bridgeRuns||0}:null; },
+  gLean:()=>+(state.gLean||0).toFixed(3),
   fans:()=>({n:(state.level&&state.level._fans||[]).length, hits:state.fanHits||0, peak:+(state.fanPeak||0).toFixed(2)}),
   train:()=>{ const t=state.level&&state.level._train; return t?{on:true, x:+t.x.toFixed(1), dx:+(t.x-car.pos.x).toFixed(1), speed:+t.speed.toFixed(1), honked:t.honked, alongside:+t.alongside.toFixed(2)}:{on:false}; },
   ghost:()=>({rec:ghost.rec?ghost.rec.length/7:0, recValid:ghost.recValid, has:!!ghost.play, bestT:ghost.bestT, t:+ghost.t.toFixed(2), visible:ghostMesh.visible, newBest:ghost.newBest, dx:ghostMesh.visible?+(ghostMesh.position.x-car.pos.x).toFixed(2):null}), susp:()=>({cF:susp.cF, cR:susp.cR, vF:susp.vF, vR:susp.vR, hF:susp.hF, hR:susp.hR, loadF:susp.loadF, loadR:susp.loadR, peak:susp.peak, kicks:susp.kicks, bodyY:carVisual.body.position.y, bodyPitch:carVisual.body.rotation.z, scale:carVisual.group.scale.toArray()}),
