@@ -583,6 +583,7 @@ renderer.shadowMap.enabled = false; // v9: blob contact shadow instead of realti
 renderer.shadowMap.type = THREE.PCFShadowMap; renderer.shadowMap.autoUpdate = true;
 
 const scene = new THREE.Scene();
+const LITE = { on:false, fogK:1, pK:1 }; // v15 lite tier state
 const camera = new THREE.PerspectiveCamera(55, 2, 0.2, 600);
 camera.position.set(-10, 8, 16);
 
@@ -697,7 +698,9 @@ scene.add(pPoints);
 const particles = []; for(let i=0;i<MAX_P;i++) particles.push({x:0,y:0,z:0,vx:0,vy:0,vz:0,life:0,max:1,r:0,g:0,b:0});
 let _pCur=0, _pLive=0;
 particles.clear = function(){ for(const p of this) p.life=0; _pLive=0; };
+let _pSkip=0;
 function spawnParticle(x,y,z, vx,vy,vz, life, r,g,b){
+  if(LITE.pK<1 && (++_pSkip&1)) return; // v15 lite tier: half the particles
   const p=particles[_pCur]; _pCur=(_pCur+1)%MAX_P;
   p.x=x;p.y=y;p.z=z;p.vx=vx;p.vy=vy;p.vz=vz;p.life=life;p.max=life;p.r=r;p.g=g;p.b=b; _pLive=MAX_P;
 }
@@ -1531,13 +1534,22 @@ const car = {
 
 const camState = { pos:new THREE.Vector3(-8,6,14), look:new THREE.Vector3(), fov:55 };
 
+/* v15 PER-WORLD LIGHTING: each world gets its own sun/fill/fog mood instead of one shared rig */
+const WORLD_LIGHT = {
+  desert:{sun:1.5, amb:0.30, hemi:0.50, fn:60, ff:300}, beach:{sun:1.45, amb:0.36, hemi:0.60, fn:70, ff:320},
+  industrial:{sun:1.05, amb:0.38, hemi:0.55, fn:40, ff:220}, cyber:{sun:0.85, amb:0.45, hemi:0.70, fn:35, ff:200},
+  candy:{sun:1.25, amb:0.42, hemi:0.62, fn:55, ff:280}, ice:{sun:1.4, amb:0.40, hemi:0.65, fn:45, ff:240},
+  volcano:{sun:1.0, amb:0.40, hemi:0.50, fn:30, ff:190}, paradise:{sun:1.4, amb:0.36, hemi:0.60, fn:65, ff:320}
+};
 function applyTheme(key){
   const th = THEMES[key] || THEMES.desert;
   scene.background = new THREE.Color(th.sky);
   scene.fog = new THREE.Fog(th.fog, 50, 280);
   if(typeof tintSky==='function') tintSky(th.sky);
-  amb.color.set(th.amb); amb.intensity = 0.32;
-  sun.intensity = 1.35;
+  const LT = WORLD_LIGHT[key] || WORLD_LIGHT.desert; // v15: per-world light mood (intensity + fog depth)
+  scene.fog.near = LT.fn*LITE.fogK; scene.fog.far = LT.ff*LITE.fogK; state.fogBase = [LT.fn, LT.ff];
+  amb.color.set(th.amb); amb.intensity = LT.amb;
+  sun.intensity = LT.sun; hemi.intensity = LT.hemi;
   hemi.color.set(th.amb); hemi.groundColor.set(th.ground);
   sun.color.set(th.dir);
   return th;
@@ -2527,8 +2539,7 @@ function frame(now){
     n.material.emissiveIntensity = (input.thrust && state.fuel>0 && state.mode==='play') ? 1.2 : 0.25;
   }
   updateContactShadow();
-  renderer.render(scene, camera);
-  perfTick(now);
+  if(!document.hidden){ renderer.render(scene, camera); perfTick(now); } // v15: no GPU work while backgrounded
   requestAnimationFrame(frame);
 }
 
@@ -2551,19 +2562,31 @@ function updateContactShadow(){
 /* v9 perf: adaptive resolution + ?fps=1 overlay */
 const FPS_ON = /[?&]fps=1/.test(location.search);
 let fpsEl=null; if(FPS_ON){ fpsEl=document.createElement('div'); fpsEl.style.cssText='position:fixed;left:6px;top:6px;z-index:99;font:12px monospace;color:#0f0;background:rgba(0,0,0,.6);padding:3px 6px;pointer-events:none;white-space:pre'; document.body.appendChild(fpsEl); }
-let _pfT=0, _pfN=0, _pfLast=0, _pfSlow=0;
+let _pfT=0, _pfN=0, _pfLast=0, _pfSlow=0, _pfLiteSlow=0, _pfHitch=0, _pfWorst=0;
+/* v15 LITE TIER: if the device is still slow at DPR 1, pull in the far plane + fog and halve particle spawns.
+   Never touches physics, so play feels identical — just less far-away scenery. ?lite=1 forces it for testing. */
+function setLite(on){ if(LITE.on===on) return; LITE.on=on; LITE.fogK = on?0.7:1; LITE.pK = on?0.5:1;
+  camera.far = on?300:600; camera.updateProjectionMatrix();
+  if(scene.fog && state.fogBase){ scene.fog.near=state.fogBase[0]*LITE.fogK; scene.fog.far=state.fogBase[1]*LITE.fogK; } }
+if(/[?&]lite=1/.test(location.search)) setLite(true);
 function perfTick(now){
   if(!_pfLast){ _pfLast=now; return; }
-  _pfN++; _pfT += now-_pfLast; _pfLast=now;
+  const fd=now-_pfLast; _pfN++; _pfT += fd; _pfLast=now;
+  if(fd>34 && fd<500 && state.mode==='play') _pfHitch++; if(fd<500 && fd>_pfWorst) _pfWorst=fd; // v15: hitch counter (>2 frames) for ?fps=1
   if(_pfT >= 1000){
     const ms=_pfT/_pfN, fps=1000/ms;
     if(fps < 52 && dprNow > 1){ if(++_pfSlow>=2){ dprNow=Math.max(1, dprNow-0.25); renderer.setPixelRatio(dprNow); onResize(); _pfSlow=0; } }
     else if(fps > 58.5 && dprNow < DPR_MAX){ dprNow=Math.min(DPR_MAX, dprNow+0.125); renderer.setPixelRatio(dprNow); onResize(); _pfSlow=0; }
     else _pfSlow=0;
-    if(fpsEl) fpsEl.textContent = fps.toFixed(0)+' fps  '+ms.toFixed(1)+' ms\ndpr '+dprNow.toFixed(2)+'  calls '+renderer.info.render.calls+'  tris '+renderer.info.render.triangles;
+    if(dprNow<=1 && fps<45 && state.mode==='play'){ if(++_pfLiteSlow>=3){ setLite(true); _pfLiteSlow=0; } } else _pfLiteSlow=0; // v15
+    if(fpsEl) fpsEl.textContent = fps.toFixed(0)+' fps  '+ms.toFixed(1)+' ms\ndpr '+dprNow.toFixed(2)+'  lite '+(LITE.on?'on':'off')+'\nhitches '+_pfHitch+'  worst '+_pfWorst.toFixed(0)+' ms  calls '+renderer.info.render.calls+'  tris '+renderer.info.render.triangles;
     _pfT=0; _pfN=0;
   }
 }
+/* v15: auto-pause when the app is backgrounded (home button, notification, lock) so kids never come back to a crash */
+function autoPause(){ if(state.mode==='play'){ togglePause(); state.autoPaused=(state.autoPaused||0)+1; } _pfLast=0; }
+document.addEventListener('visibilitychange', ()=>{ if(document.hidden) autoPause(); });
+window.addEventListener('pagehide', autoPause); window.addEventListener('blur', ()=>{ if(document.hidden) autoPause(); });
 /* Boot */
 ['touchstart','mousedown','keydown'].forEach(ev=>{
   window.addEventListener(ev, ()=>audio.gesture(), {once:false, passive:true});
@@ -2573,7 +2596,7 @@ requestAnimationFrame(frame);
 
 // Expose for smoke tests
 window.__RSP = {
-  version:14, audio, failRun, _sample:sampleSegment, _renderer:renderer, _scene:scene,
+  version:15, audio, failRun, _sample:sampleSegment, _renderer:renderer, _scene:scene,
   bridge:()=>{ const b=state.level&&state.level._bridge; return b?{n:b.planks.length, x0:+b.x0.toFixed(1), x1:+b.x1.toFixed(1), fallen:b.fallen, cleared:b.cleared, runs:state.bridgeRuns||0}:null; },
   gLean:()=>+(state.gLean||0).toFixed(3),
   gate:()=>{ const G=state.level&&state.level._gate; return G?{bx:+G.bx.toFixed(1), gx:+G.gx.toFixed(1), pressed:G.pressed, bonus:G.bonus, open:+G.open.toFixed(2), opened:G.opened, n:state.gatesOpened||0}:null; },
@@ -2590,7 +2613,7 @@ window.__RSP = {
   coins:()=>{ const c=state.level&&state.level._coins; return {got:state.coins||0, n:c?c.n:0, gold:!!state.goldGot, hasGold:!!(state.level&&state.level.gold), goldPos:state.level&&state.level._gold?state.level._gold.userData.base.toArray():null}; },
   axes:()=>{ const q=car.quat; const ax=v=>new THREE.Vector3(...v).applyQuaternion(q).toArray().map(x=>+x.toFixed(3)); const seg=state.framesData.segs[car.segIndex]; const f=sampleSegment(seg,car.s); const sF=sampleSegment(seg,car.s+SUSP.axF), sR=sampleSegment(seg,car.s-SUSP.axR); return {x:ax([1,0,0]), y:ax([0,1,0]), z:ax([0,0,1]), t:f.tangent.toArray().map(x=>+x.toFixed(3)), n:f.normal.toArray().map(x=>+x.toFixed(3)), b:f.binormal.toArray().map(x=>+x.toFixed(3)), chord:sF.pos.clone().sub(sR.pos).normalize().toArray().map(x=>+x.toFixed(3)), dF:+sF.pos.distanceTo(f.pos).toFixed(3)}; },
   cine:()=>({active:!!state.cine, k:state.cineK||0, count:state.cineCount||0, slowmo:state.slowmo||0, scale:state.slowmoScale}),
-  engine:()=>audio.engineLevel(), particles:()=>({pool:particles.length, live:particles.reduce((a,p)=>a+(p.life>0?1:0),0)}), screen:()=>{const v=carVisual.group.position.clone().project(camera); return {x:(v.x+1)/2*innerWidth,y:(1-v.y)/2*innerHeight};}, pads:()=>({hits:state.padHits||0, n:(state.level&&state.level.bouncePads||[]).length}), loops:()=>state.framesData.segs.map(sg=>{const r=[];let inL=false,st=0;const N=Math.ceil(sg.length);for(let i=0;i<=N;i++){const f=sampleSegment(sg,Math.min(sg.length,i));if(f.normal.y<-0.5&&!inL){inL=true;st=i;} if(f.normal.y>-0.5&&inL){inL=false;r.push([st,i]);}}return r;}), perf:()=>({calls:renderer.info.render.calls, tris:renderer.info.render.triangles, dpr:dprNow}), levels:LEVELS.length, startLevel, showTitle, showSelect, state, car,
+  engine:()=>audio.engineLevel(), particles:()=>({pool:particles.length, live:particles.reduce((a,p)=>a+(p.life>0?1:0),0)}), screen:()=>{const v=carVisual.group.position.clone().project(camera); return {x:(v.x+1)/2*innerWidth,y:(1-v.y)/2*innerHeight};}, pads:()=>({hits:state.padHits||0, n:(state.level&&state.level.bouncePads||[]).length}), loops:()=>state.framesData.segs.map(sg=>{const r=[];let inL=false,st=0;const N=Math.ceil(sg.length);for(let i=0;i<=N;i++){const f=sampleSegment(sg,Math.min(sg.length,i));if(f.normal.y<-0.5&&!inL){inL=true;st=i;} if(f.normal.y>-0.5&&inL){inL=false;r.push([st,i]);}}return r;}), perf:()=>({calls:renderer.info.render.calls, tris:renderer.info.render.triangles, dpr:dprNow, lite:LITE.on, far:camera.far, hitches:_pfHitch, worstMs:+_pfWorst.toFixed(1)}), setLite, autoPause, light:()=>({sun:sun.intensity, amb:amb.intensity, hemi:hemi.intensity, fogNear:scene.fog.near, fogFar:scene.fog.far}), levels:LEVELS.length, startLevel, showTitle, showSelect, state, car,
   getScore:()=>state.score, getMode:()=>state.mode, getStars:()=>state.starGrade, input,
   cam:()=>({x:camera.position.x,y:camera.position.y,z:camera.position.z,qx:camera.quaternion.x,qy:camera.quaternion.y,qz:camera.quaternion.z,qw:camera.quaternion.w}),
   lips:()=>state.framesData.segs.map((sg,i,all)=>(sg.lips||[]).concat(i<all.length-1?[sg.length-0.3]:[])),
