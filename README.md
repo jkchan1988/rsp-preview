@@ -2,7 +2,7 @@
 
 Unpublished daily preview build for family playtest.
 
-- **Current:** v6 (2026-10-27 Asia/Hong_Kong)
+- **Current:** v11 (2026-10-28 Asia/Hong_Kong) — wind fans, toy train, best-run ghost
 - Live: https://jkchan1988.github.io/rsp-preview/
 - Formal library publish is separate — this repo is preview only.
 
