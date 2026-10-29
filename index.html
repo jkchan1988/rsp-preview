@@ -255,6 +255,8 @@ const audio = (()=>{
     perfect(){ duck(0.5,0.35); tone(988,0.07,'triangle',0.12); setTimeout(()=>tone(1319,0.07,'triangle',0.12),60); setTimeout(()=>tone(1976,0.22,'sine',0.1),120); }, // v14 perfect landing chime
     click(){ tone(1400,0.03,'square',0.08); tone(500,0.07,'triangle',0.1); setTimeout(()=>tone(220,0.45,'sawtooth',0.035,260),70); }, // v14 button + gate motor
     bonk(){ duck(0.5,0.3); noise(0.18,0.2); tone(260,0.18,'sine',0.16,-180); tone(90,0.2,'sine',0.14,-30); }, // v14 lava blob bonk (soft, never a crash)
+    splash(v=1){ noise(0.35,0.12*v); tone(520,0.22,'sine',0.05*v,-380); tone(1400,0.12,'triangle',0.025*v,-900); }, // v17 dolphin splash
+    chirp(){ tone(1500,0.09,'sine',0.05,700); setTimeout(()=>tone(1900,0.08,'sine',0.045,500),90); }, // v17 friendly dolphin squeak
     blorp(){ tone(120,0.25,'sine',0.06,120); noise(0.12,0.05); }, // v14 lava blob launch
     fan(){ noise(0.45,0.16); tone(180,0.4,'sine',0.07,260); },
     creak(v=1){ noise(0.25,0.1*v); tone(140,0.3,'sawtooth',0.035*v,70); }, // v12 bridge crack + groan // v11 wind fan whoosh
@@ -451,6 +453,7 @@ function addSetPieces(){ // v9: research set pieces — kid-safe bounce pad + po
   // v14 SWITCH GATES (research: "buttons that lower ramps", switch puzzles) and kid-safe LAVA BLOBS (research: lava bombs)
   LEVELS[1].gate=true; LEVELS[3].gate=true; LEVELS[5].gate=true; LEVELS[7].gate=90; // the L8 finale's long flat is jumped over, so pin the gate to the pre-loop straight
   LEVELS[6].lava=3;
+  LEVELS[1].dolphins=true; LEVELS[7].dolphins=true; // v17: dolphin leap set piece over the sea (research: slow-mo animal jumps; kid-safe dolphins, not sharks)
 }
 (function buildLevels(){
   // 1 Desert Dawn — tutorial + corkscrew
@@ -648,6 +651,27 @@ function updateSky(dt){
       _clP.set(x + p[0]*c.s, cy*0.6 + c.y + p[1]*c.s, camera.position.z + c.z + p[2]*c.s); _clS.set(r*1.25, r*0.8, r);
       _clM.compose(_clP, _clQ, _clS); clouds.setMatrixAt(k++, _clM); } }
   clouds.instanceMatrix.needsUpdate = true;
+}
+/* v17 VISUAL: animated low-poly sea under the track (Beach, Ice, Paradise) and a glowing lava sea (Volcano).
+   One faceted grid that follows the camera; heights are sampled in world space so the waves never swim. 1 draw call. */
+const SEA = { W:420, D:260, NX:60, NZ:30, Y:-10.4, z0:-215 };
+const SEA_THEME = { beach:{c:0x1ea8d8, e:0x0a4a70, ei:0.35, amp:0.55, spd:1.0, rough:0.25, metal:0.1}, paradise:{c:0x22c8c0, e:0x0a5a68, ei:0.4, amp:0.6, spd:1.0, rough:0.22, metal:0.1},
+  ice:{c:0x8fd4f0, e:0x305a78, ei:0.3, amp:0.22, spd:0.45, rough:0.12, metal:0.25}, volcano:{c:0xe0501a, e:0xff3000, ei:0.55, amp:0.7, spd:0.55, rough:0.6, metal:0.0} };
+const seaGeo = new THREE.PlaneGeometry(SEA.W, SEA.D, SEA.NX, SEA.NZ); seaGeo.rotateX(-Math.PI/2);
+const seaBase = Float32Array.from(seaGeo.attributes.position.array); seaGeo.attributes.position.setUsage(THREE.DynamicDrawUsage);
+const seaMat = new THREE.MeshPhongMaterial({ color:0x1ea8d8, emissive:0x0a4a70, emissiveIntensity:0.35, specular:0x9adcf0, shininess:60, flatShading:true }); // v17: Phong, cheaper per pixel than Standard on a full-width surface
+const sea = new THREE.Mesh(seaGeo, seaMat); sea.frustumCulled = false; sea.visible = false; sea.renderOrder = 0; scene.add(sea);
+const seaState = { key:null, amp:0.5, spd:1, t:0, frames:0, cell:SEA.W/SEA.NX };
+function setSeaTheme(key){ const T = SEA_THEME[key]; seaState.key = T ? key : null; sea.visible = !!T; if(!T) return;
+  seaMat.color.set(T.c); seaMat.emissive.set(T.e); seaMat.emissiveIntensity = T.ei; seaMat.shininess = 90*(1-T.rough); seaMat.specular.set(T.metal>0.2?0xe8f6ff:(key==='volcano'?0x401000:0x9adcf0)); seaState.amp = T.amp; seaState.spd = T.spd; }
+function seaHeight(x, z, t){ const a = seaState.amp; return a*(0.55*Math.sin(x*0.16 + t*1.3) + 0.35*Math.sin(z*0.23 - t*1.05 + x*0.05) + 0.25*Math.sin((x+z)*0.37 + t*2.1)); }
+function updateSea(dt){
+  if(!sea.visible) return; seaState.t += dt*seaState.spd; seaState.frames++;
+  const ox = Math.round(camera.position.x / seaState.cell) * seaState.cell; sea.position.set(ox, SEA.Y, camera.position.z + SEA.z0 + SEA.D/2);
+  if(LITE.on && (seaState.frames & 1)) return; // v17: lite tier animates the sea every other frame
+  const P = seaGeo.attributes.position.array, t = seaState.t, sz = sea.position.z;
+  for(let i=0;i<P.length;i+=3){ P[i+1] = seaHeight(ox + seaBase[i], sz + seaBase[i+2], t); }
+  seaGeo.attributes.position.needsUpdate = true;
 }
 let trackGroup = new THREE.Group();
 let decorGroup = new THREE.Group();
@@ -1039,7 +1063,7 @@ function buildPickups(level, framesData){
     bp._mesh = m; m.visible = true;
     pickupGroup.add(m);
   }
-  buildFans(level, framesData); buildTrain(level, framesData); buildBridge(level, framesData); buildGate(level, framesData); buildLava(level, framesData);
+  buildFans(level, framesData); buildTrain(level, framesData); buildBridge(level, framesData); buildGate(level, framesData); buildLava(level, framesData); buildDolphins(level, framesData);
   const starMat = new THREE.MeshStandardMaterial({ color:0xffd76a, emissive:0xffaa20, emissiveIntensity:0.8, metalness:0.4, roughness:0.3 });
   const barrelMat = new THREE.MeshStandardMaterial({ color:0xc03018, emissive:0x801000, emissiveIntensity:0.35, metalness:0.3, roughness:0.55 });
   const crateMat = new THREE.MeshStandardMaterial({ color:0xc8a050, emissive:0x403010, emissiveIntensity:0.15, metalness:0.15, roughness:0.7 });
@@ -1421,6 +1445,50 @@ function updateLava(dt){
   }
 }
 
+/* v17 DOLPHIN LEAP (Beach L2, Paradise L8): two friendly low-poly dolphins arc out of the sea behind the track as the car
+   comes by, with splashes, a squeak and a short slow-mo. Being in the air at their peak = DOLPHIN HIGH-FIVE (+150). Visual only:
+   they never touch the road, so nothing can block or crash a run. */
+const dolBodyMat = new THREE.MeshStandardMaterial({ color:0x6f8fb0, emissive:0x1a2a40, emissiveIntensity:0.35, roughness:0.45, flatShading:true });
+const dolBellyMat = new THREE.MeshStandardMaterial({ color:0xe8eef4, emissive:0x404850, emissiveIntensity:0.3, roughness:0.5, flatShading:true });
+function makeDolphin(){
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), dolBodyMat); body.scale.set(2.3, 0.75, 0.75); g.add(body);
+  const belly = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), dolBellyMat); belly.scale.set(1.9, 0.5, 0.6); belly.position.set(0.1,-0.28,0); g.add(belly);
+  const snout = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.9, 8), dolBodyMat); snout.rotation.z = -Math.PI/2; snout.position.x = 2.45; g.add(snout);
+  const fin = new THREE.Mesh(new THREE.ConeGeometry(0.35, 0.9, 6), dolBodyMat); fin.position.set(-0.2, 0.85, 0); fin.rotation.z = 0.45; fin.scale.z = 0.35; g.add(fin);
+  const tail = new THREE.Mesh(new THREE.ConeGeometry(0.32, 1.2, 6), dolBodyMat); tail.rotation.z = Math.PI/2; tail.position.x = -2.6; g.add(tail);
+  const fluke = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.1, 1.5), dolBodyMat); fluke.position.x = -3.2; g.add(fluke);
+  const eye = new THREE.Mesh(new THREE.SphereGeometry(0.09, 6, 4), gateBaseMat); eye.position.set(1.7, 0.18, 0.62); g.add(eye);
+  g.visible = false; return g;
+}
+function buildDolphins(level, framesData){
+  level._dol = null; if(!level.dolphins) return;
+  const runs = flatRuns(level, framesData, 8); if(!runs.length) return;
+  const r = runs.sort((p,q)=>p.a.pos.x-q.a.pos.x)[Math.min(1, runs.length-1)];
+  const tx = r.a.pos.x, ty = r.a.pos.y;
+  const pods = [ { z:-8.5, dx:16, len:20, apex:ty+7.5, delay:0 }, { z:-12.5, dx:20, len:22, apex:ty+5.5, delay:0.28 } ].map(o=>{ const m = makeDolphin(); pickupGroup.add(m); return Object.assign(o, { m, t:-1 }); });
+  level._dol = { tx, ty, pods, fired:false, dur:1.7, splashes:0, highFive:false, peakSeen:false };
+}
+function dolSplash(x, z, big){ const n = big ? 26 : 16; for(let i=0;i<n;i++) spawnParticle(x+(Math.random()-0.5)*2, SEA.Y+0.6, z+(Math.random()-0.5)*1.5, (Math.random()-0.5)*5, 5+Math.random()*7, (Math.random()-0.5)*3, 0.7, 0.85, 0.95, 1.0); }
+function updateDolphins(dt){
+  const D = state.level && state.level._dol; if(!D) return;
+  if(!D.fired && car.pos.x > D.tx - 6){ D.fired = true; for(const p of D.pods){ p.t = -p.delay; p.x0 = D.tx + p.dx; } popup('DOLPHINS!', 'pop'); }
+  if(!D.fired) return;
+  for(const p of D.pods){
+    if(p.t > D.dur + 0.1) continue;
+    p.t += dt; if(p.t < 0) continue;
+    const u = Math.min(1, p.t / D.dur);
+    if(!p.out){ p.out = true; dolSplash(p.x0, p.z, true); D.splashes++; audio.splash(0.8); }
+    const x = p.x0 + u*p.len, y = SEA.Y + (p.apex - SEA.Y) * 4*u*(1-u);
+    p.m.visible = u < 1; p.m.position.set(x, y, p.z);
+    const vy = (p.apex - SEA.Y) * 4*(1-2*u) / D.dur, vx = p.len / D.dur; p.m.rotation.z = Math.atan2(vy, vx);
+    if(u > 0.45 && u < 0.6 && !D.peakSeen && p === D.pods[0]){ D.peakSeen = true; audio.chirp();
+      if(Math.abs(car.pos.x - x) < 26 && !(state.slowmoUsedAt > performance.now()-4000)){ state.slowmo = 0.6; state.slowmoScale = 0.5; state.slowmoUsedAt = performance.now(); state.dolSlowmo = (state.dolSlowmo||0)+1; }
+      if(!car.grounded){ D.highFive = true; state.dolHighFives = (state.dolHighFives||0)+1; addScore(150, 'DOLPHIN HIGH-FIVE!', 'combo'); haptic(15); } }
+    if(u >= 1 && !p.inn){ p.inn = true; dolSplash(x, p.z, false); D.splashes++; audio.splash(0.6); }
+  }
+}
+
 /* v11 TOY TRAIN: races alongside the track behind it (research #7 "a train running alongside"); one rail + two meshes */
 const trainBodyMat = new THREE.MeshStandardMaterial({ color:0xd8402c, metalness:0.3, roughness:0.5, emissive:0x401008, emissiveIntensity:0.3 });
 const trainTrimMat = new THREE.MeshStandardMaterial({ color:0x2a2e3a, metalness:0.6, roughness:0.4 });
@@ -1585,6 +1653,7 @@ function applyTheme(key){
   const th = THEMES[key] || THEMES.desert;
   scene.background = new THREE.Color(th.sky);
   scene.fog = new THREE.Fog(th.fog, 50, 280);
+  setSeaTheme(key); // v17 animated sea / lava sea
   setSkyTheme(key, th); // v16: gradient sky + matching fog + cloud tint
   const LT = WORLD_LIGHT[key] || WORLD_LIGHT.desert; // v15: per-world light mood (intensity + fog depth)
   scene.fog.near = LT.fn*LITE.fogK; scene.fog.far = LT.ff*LITE.fogK; state.fogBase = [LT.fn, LT.ff];
@@ -2609,12 +2678,12 @@ function frame(now){
     B.rotation.z = (susp.cR - susp.cF)/SUSP.wb + state.gLean;
     for(const h of carVisual.hubs){ h.hub.position.y = h.baseY + (h.front ? susp.hF : susp.hR); h.hub.rotation.z = -susp.spin; }
   } else { carVisual.body.position.y = SUSP.lift - SUSP.sag; carVisual.body.rotation.z = 0; for(const h of carVisual.hubs){ h.hub.position.y=h.baseY; } }
-  updateCoins(raw); if(state.mode==='play'){ updateFans(raw); updateTrain(raw); updateBridge(raw); updateGate(raw); updateLava(raw); } updateGhost();
+  updateCoins(raw); if(state.mode==='play'){ updateFans(raw); updateTrain(raw); updateBridge(raw); updateGate(raw); updateLava(raw); updateDolphins(raw); } updateGhost();
   audio.engine(state.mode==='play' && !document.hidden, car.speed, !!input.gas, car.grounded, !!(input.thrust && state.fuel>0 && state.mode==='play'));
   for(const n of carVisual.nozzles){
     n.material.emissiveIntensity = (input.thrust && state.fuel>0 && state.mode==='play') ? 1.2 : 0.25;
   }
-  updateContactShadow(); updateSky(raw); updateFinale(raw);
+  updateContactShadow(); updateSky(raw); updateSea(raw); updateFinale(raw);
   if(!document.hidden){ renderer.render(scene, camera); perfTick(now); } // v15: no GPU work while backgrounded
   requestAnimationFrame(frame);
 }
@@ -2672,7 +2741,7 @@ requestAnimationFrame(frame);
 
 // Expose for smoke tests
 window.__RSP = {
-  version:16, audio,
+  version:17, audio, sea:()=>({visible:sea.visible, key:seaState.key, y:sea.position.y, h0:seaGeo.attributes.position.array[1], h1:seaGeo.attributes.position.array[301], t:seaState.t, camDx:Math.abs(sea.position.x-camera.position.x)}), dolphins:()=>{ const D=state.level&&state.level._dol; return D?{n:D.pods.length, fired:D.fired, splashes:D.splashes, highFive:D.highFive, peak:D.peakSeen, maxY:Math.max(...D.pods.map(p=>p.m.position.y)), slowmo:state.dolSlowmo||0, highFives:state.dolHighFives||0}:null; },
   finale:()=>({active:!!state.finale, t:state.finale?+state.finale.t.toFixed(2):0, bursts:state.finale?state.finale.bursts:0, count:state.finaleCount||0, cardShown:!document.getElementById('overlay').classList.contains('hidden')}),
   sky:()=>{ const U=skyMat.uniforms; return {top:U.top.value.getHexString(), hor:U.hor.value.getHexString(), fog:scene.fog?scene.fog.color.getHexString():null, clouds:clouds.count, cloudVis:clouds.visible, domeAtCam:skyDome.position.distanceTo(camera.position)<0.01}; }, failRun, _sample:sampleSegment, _renderer:renderer, _scene:scene,
   bridge:()=>{ const b=state.level&&state.level._bridge; return b?{n:b.planks.length, x0:+b.x0.toFixed(1), x1:+b.x1.toFixed(1), fallen:b.fallen, cleared:b.cleared, runs:state.bridgeRuns||0}:null; },
