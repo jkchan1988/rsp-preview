@@ -21,11 +21,18 @@ canvas#c{display:block;width:100%;height:100%;touch-action:none}
 @media (orientation:portrait){#wrap,#hudTop,#fuelWrap,#controls,#tiltToggle,#combo,#starHud{display:none!important}#rotate{display:flex}}
 .hud{position:fixed;pointer-events:none;z-index:10;padding:env(safe-area-inset-top,8px) env(safe-area-inset-right,12px) env(safe-area-inset-bottom,8px) env(safe-area-inset-left,12px)}
 #hudTop{top:0;left:0;right:0;display:none;justify-content:space-between;align-items:flex-start;gap:8px}
-#hudTop .panel{background:rgba(0,0,0,.45);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:14px;padding:8px 14px;font-weight:700;font-size:clamp(14px,2.8vw,22px);border:1px solid rgba(255,255,255,.12)}
-#fuelWrap{display:none;position:fixed;top:calc(env(safe-area-inset-top,8px) + 52px);left:50%;transform:translateX(-50%);width:min(280px,50vw);z-index:10;pointer-events:none}
-#fuelBar{height:12px;border-radius:8px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);overflow:hidden}
-#fuelFill{height:100%;width:100%;background:linear-gradient(90deg,#4af,#8ff);border-radius:8px}
-#fuelLabel{text-align:center;font-size:11px;font-weight:700;letter-spacing:.08em;opacity:.8;margin-top:2px}
+/* v19 HUD: three zones (score | stars | buttons), nothing stacks; glass pills with eased transitions */
+.hudGrp{display:flex;gap:8px;align-items:flex-start;flex:1 1 0}.hudC{justify-content:center}.hudR{justify-content:flex-end}
+#hudTop .panel{background:linear-gradient(180deg,rgba(40,52,80,.62),rgba(0,0,0,.5));backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:14px;padding:8px 14px;font-weight:800;font-size:clamp(14px,2.8vw,22px);border:1px solid rgba(255,255,255,.16);box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 4px 14px rgba(0,0,0,.25);transition:transform .22s cubic-bezier(.34,1.56,.64,1),box-shadow .3s ease;font-variant-numeric:tabular-nums}
+#hudTop .panel.bump{transform:scale(1.12);box-shadow:inset 0 1px 0 rgba(255,255,255,.25),0 0 18px rgba(255,210,90,.55)}
+#multPanel.hot{color:#ffd76a;border-color:rgba(255,200,80,.55)}
+#fuelWrap{display:none;position:fixed;top:calc(env(safe-area-inset-top,0px) + 58px);left:50%;transform:translateX(-50%);width:min(250px,34vw);z-index:10;pointer-events:none;align-items:center;gap:6px}
+#fuelBar{flex:1;height:12px;border-radius:8px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.22);overflow:hidden;box-shadow:inset 0 1px 3px rgba(0,0,0,.5)}
+#fuelFill{height:100%;width:100%;background:linear-gradient(90deg,#3a9cff,#8ff,#e8ffff);border-radius:8px;transform-origin:left;transition:transform .18s ease-out;will-change:transform}
+#fuelWrap.full #fuelBar{box-shadow:0 0 10px rgba(120,230,255,.75),inset 0 1px 3px rgba(0,0,0,.4)}
+#fuelWrap.low #fuelFill{background:linear-gradient(90deg,#ff5a2a,#ffb040)}#fuelWrap.low #fuelBar{animation:lowPulse .8s ease-in-out infinite alternate}
+@keyframes lowPulse{from{box-shadow:0 0 0 rgba(255,90,40,0)}to{box-shadow:0 0 12px rgba(255,90,40,.9)}}
+#fuelLabel{font-size:15px;line-height:1;filter:drop-shadow(0 1px 3px rgba(0,0,0,.6))}
 #pauseBtn,#musicBtn{pointer-events:auto;width:48px;height:48px;border-radius:14px;border:1px solid rgba(255,255,255,.2);background:rgba(0,0,0,.45);color:#fff;font-size:22px;cursor:pointer}
 #musicBtn.off{opacity:.45;text-decoration:line-through}
 #controls{display:none;position:fixed;inset:0;z-index:5;pointer-events:none}
@@ -38,11 +45,12 @@ canvas#c{display:block;width:100%;height:100%;touch-action:none}
 #rocketMeter{position:absolute;left:14%;right:14%;bottom:14px;height:7px;border-radius:4px;background:rgba(0,0,0,.45);overflow:hidden}#rocketFill{display:block;height:100%;width:100%;background:linear-gradient(90deg,#ff7a20,#ffe060);transform-origin:left;}
 #btnThrust{pointer-events:auto;position:absolute;left:50%;bottom:calc(env(safe-area-inset-bottom,12px) + 10px);transform:translateX(-50%);width:120px;height:120px;font-size:15px!important;border-radius:50%;border:3px solid rgba(140,220,255,.9);background:radial-gradient(circle at 35% 28%,#9df,#3a7ad0 55%,#0a2858);box-shadow:0 0 24px rgba(80,190,255,.55),inset 0 0 16px rgba(255,255,255,.25);color:#fff;font-weight:900;font-size:12px;letter-spacing:.04em;cursor:pointer;display:flex;align-items:center;justify-content:center;text-align:center;line-height:1.1;z-index:6;opacity:.85}
 #btnThrust:active,#btnThrust.on{opacity:1;box-shadow:0 0 40px rgba(140,230,255,1),0 0 70px rgba(255,140,40,.4),inset 0 0 20px rgba(255,255,255,.45);border-color:#fff;transform:translateX(-50%) scale(.92)}
-#tiltToggle{display:none;pointer-events:auto;position:absolute;left:50%;top:calc(env(safe-area-inset-top,8px) + 78px);transform:translateX(-50%);z-index:11;border-radius:12px;border:1px solid rgba(255,255,255,.2);background:rgba(0,0,0,.45);color:#fff;font-size:11px;font-weight:800;letter-spacing:.06em;padding:8px 10px;cursor:pointer;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+#tiltToggle{display:none;pointer-events:auto;position:relative;height:48px;min-width:58px;z-index:11;border-radius:14px;border:1px solid rgba(255,255,255,.2);background:rgba(0,0,0,.45);color:#fff;font-size:11px;font-weight:800;letter-spacing:.06em;padding:8px 10px;cursor:pointer;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 #tiltToggle.on{background:rgba(40,120,200,.55);border-color:rgba(140,220,255,.7)}
-#combo{position:fixed;left:50%;top:calc(env(safe-area-inset-top,8px) + 78px);transform:translateX(-50%);z-index:12;pointer-events:none;font-weight:900;font-size:clamp(18px,4vw,28px);color:#ffd76a;text-shadow:0 2px 10px rgba(0,0,0,.7);opacity:0}
-#combo.punch{animation:comboPunch .35s ease-out}
-@keyframes comboPunch{0%{transform:translateX(-50%) scale(.7);opacity:.4}40%{transform:translateX(-50%) scale(1.25);opacity:1}100%{transform:translateX(-50%) scale(1);opacity:1}}
+#combo{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 80px);transform:translateX(-50%) translateY(-10px) scale(.8);z-index:12;pointer-events:none;font-weight:900;font-size:clamp(15px,3vw,22px);letter-spacing:.04em;color:#2a1400;background:linear-gradient(90deg,#ff9a3c,#ffd76a 55%,#fff1b0);border-radius:999px;padding:3px 16px;box-shadow:0 0 18px rgba(255,180,60,.6),0 3px 10px rgba(0,0,0,.35);opacity:0;transition:opacity .25s ease,transform .35s cubic-bezier(.34,1.56,.64,1);white-space:nowrap}
+#combo.show{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}
+#combo.show.punch{animation:comboPunch .35s ease-out}
+@keyframes comboPunch{0%{transform:translateX(-50%) scale(.85)}40%{transform:translateX(-50%) scale(1.22)}100%{transform:translateX(-50%) scale(1)}}
 .popup{position:fixed;left:50%;top:35%;transform:translate(-50%,-50%);z-index:15;pointer-events:none;font-weight:900;font-size:clamp(22px,5vw,40px);text-shadow:0 2px 12px rgba(0,0,0,.8);animation:pop .9s ease-out forwards;white-space:nowrap}
 .popup.flip{color:#ffd76a;font-size:clamp(28px,6vw,48px);text-shadow:0 0 24px rgba(255,200,60,.9),0 2px 12px rgba(0,0,0,.8)}
 .popup.smash{color:#ff8040;font-size:clamp(26px,5.5vw,44px);text-shadow:0 0 20px rgba(255,100,40,.9),0 2px 12px rgba(0,0,0,.8)}
@@ -80,15 +88,12 @@ button.menu.gold{background:linear-gradient(180deg,#ffd76a,#e09020);color:#1a100
 <div id="wrap"><canvas id="c"></canvas></div>
 <div id="speedLines"></div>
 <div id="hudTop" class="hud">
-  <div class="panel" id="scorePanel">0</div>
-  <div class="panel" id="multPanel">×1</div>
-  <div class="panel" id="gradePanel">☆☆☆</div>
-  <button id="musicBtn" aria-label="Music on or off" aria-pressed="true">♪</button>
-  <button id="pauseBtn" aria-label="Pause">⏸</button>
+  <div class="hudGrp hudL"><div class="panel" id="scorePanel">0</div><div class="panel" id="multPanel">×1</div></div>
+  <div class="hudGrp hudC"><div class="panel" id="gradePanel">☆☆☆</div></div>
+  <div class="hudGrp hudR"><button id="tiltToggle" type="button" aria-pressed="false">TILT OFF</button><button id="musicBtn" aria-label="Music on or off" aria-pressed="true">♪</button><button id="pauseBtn" aria-label="Pause">⏸</button></div>
 </div>
-<div id="fuelWrap"><div id="fuelBar"><div id="fuelFill"></div></div><div id="fuelLabel">ROCKET</div></div>
+<div id="fuelWrap"><div id="fuelLabel" aria-label="Rocket fuel">🚀</div><div id="fuelBar"><div id="fuelFill"></div></div></div>
 <div id="combo">COMBO ×2</div>
-<button id="tiltToggle" type="button" aria-pressed="false">TILT OFF</button>
 <div id="starHud">☆☆☆</div>
 <div id="controls">
   <div id="padGas" class="pad">GAS<br>▲</div>
@@ -453,6 +458,7 @@ function addSetPieces(){ // v9: research set pieces — kid-safe bounce pad + po
   // v14 SWITCH GATES (research: "buttons that lower ramps", switch puzzles) and kid-safe LAVA BLOBS (research: lava bombs)
   LEVELS[1].gate=true; LEVELS[3].gate=true; LEVELS[5].gate=true; LEVELS[7].gate=90; // the L8 finale's long flat is jumped over, so pin the gate to the pre-loop straight
   LEVELS[6].lava=3;
+  LEVELS[1].popRamp=true; LEVELS[3].popRamp=true; LEVELS[7].popRamp=true; // v19: hydraulic pop-up ramp (moving track piece). L5/L7: no flat run far enough from a loop/steep section
   LEVELS[0].kicker=true; LEVELS[2].kicker=true; LEVELS[5].kicker=true; // v18: sliding kicker ramp (research: moving ramps / moving track pieces)
   LEVELS[1].dolphins=true; LEVELS[7].dolphins=true; // v17: dolphin leap set piece over the sea (research: slow-mo animal jumps; kid-safe dolphins, not sharks)
 }
@@ -761,13 +767,17 @@ const pCol = new Float32Array(MAX_P*3);
 const pGeo = new THREE.BufferGeometry();
 pGeo.setAttribute('position', new THREE.BufferAttribute(pPos,3));
 pGeo.setAttribute('color', new THREE.BufferAttribute(pCol,3));
-const pMat = new THREE.PointsMaterial({ size:1.05, vertexColors:true, transparent:true, opacity:0.95, depthWrite:false, blending:THREE.AdditiveBlending, sizeAttenuation:true });
+// v19 VISUAL: soft round glow sprite (was hard square points) — sparks, embers and sea sparkle read as light, not confetti squares
+const _pTexCv=document.createElement('canvas'); _pTexCv.width=_pTexCv.height=64;
+{ const x=_pTexCv.getContext('2d'), g=x.createRadialGradient(32,32,0,32,32,32); g.addColorStop(0,'rgba(255,255,255,1)'); g.addColorStop(0.22,'rgba(255,255,255,0.95)'); g.addColorStop(0.5,'rgba(255,255,255,0.38)'); g.addColorStop(1,'rgba(255,255,255,0)'); x.fillStyle=g; x.fillRect(0,0,64,64); }
+const pTex=new THREE.CanvasTexture(_pTexCv);
+const pMat = new THREE.PointsMaterial({ size:1.45, map:pTex, vertexColors:true, transparent:true, opacity:1, depthWrite:false, blending:THREE.AdditiveBlending, sizeAttenuation:true });
 const pPoints = new THREE.Points(pGeo, pMat);
 scene.add(pPoints);
 // v10: fixed object pool + ring cursor — zero allocations, no shift()/splice() churn
 const particles = []; for(let i=0;i<MAX_P;i++) particles.push({x:0,y:0,z:0,vx:0,vy:0,vz:0,life:0,max:1,r:0,g:0,b:0});
 let _pCur=0, _pLive=0;
-particles.clear = function(){ for(const p of this) p.life=0; _pLive=0; };
+particles.clear = function(){ for(const p of this){ p.life=0; p.max=1; } _pLive=MAX_P; }; // v19: max=1 so the next update blanks every slot once
 let _pSkip=0;
 function spawnParticle(x,y,z, vx,vy,vz, life, r,g,b){
   if(LITE.pK<1 && (++_pSkip&1)) return; // v15 lite tier: half the particles
@@ -787,8 +797,8 @@ function updateParticles(dt){
       pPos[i*3]=p.x; pPos[i*3+1]=p.y; pPos[i*3+2]=p.z;
       const a=p.life/p.max;
       pCol[i*3]=p.r*a; pCol[i*3+1]=p.g*a; pCol[i*3+2]=p.b*a;
-    } else {
-      pPos[i*3]=0; pPos[i*3+1]=-999; pPos[i*3+2]=0;
+    } else if(p.max>0){ // v19: write a dead slot once when it dies, then skip it
+      p.max=0; pPos[i*3]=0; pPos[i*3+1]=-999; pPos[i*3+2]=0;
       pCol[i*3]=0; pCol[i*3+1]=0; pCol[i*3+2]=0;
     }
   }
@@ -1042,6 +1052,7 @@ function buildTrackMeshes(framesData, theme){
   arch.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(end.tangent, end.normal, end.binormal));
   decorGroup.add(arch);
   mergeStatic(trackGroup); mergeStatic(decorGroup);
+  for(const G of [trackGroup, decorGroup]) G.traverse(o=>{ if(o!==G && !o.userData.dynamic){ o.updateMatrix(); o.matrixAutoUpdate=false; } }); // v19 TECH: static track/decor never recompose their matrices
 }
 
 function nearestFrameToXY(framesData, x, y){
@@ -1069,7 +1080,7 @@ function buildPickups(level, framesData){
     bp._mesh = m; m.visible = true;
     pickupGroup.add(m);
   }
-  buildFans(level, framesData); buildTrain(level, framesData); buildBridge(level, framesData); buildGate(level, framesData); buildLava(level, framesData); buildDolphins(level, framesData); buildKicker(level, framesData);
+  buildFans(level, framesData); buildTrain(level, framesData); buildBridge(level, framesData); buildGate(level, framesData); buildLava(level, framesData); buildDolphins(level, framesData); buildKicker(level, framesData); buildPopRamp(level, framesData);
   const starMat = new THREE.MeshStandardMaterial({ color:0xffd76a, emissive:0xffaa20, emissiveIntensity:0.8, metalness:0.4, roughness:0.3 });
   const barrelMat = new THREE.MeshStandardMaterial({ color:0xc03018, emissive:0x801000, emissiveIntensity:0.35, metalness:0.3, roughness:0.55 });
   const crateMat = new THREE.MeshStandardMaterial({ color:0xc8a050, emissive:0x403010, emissiveIntensity:0.15, metalness:0.15, roughness:0.7 });
@@ -1540,6 +1551,55 @@ function kickerHit(fr){ // called from the grounded physics step; returns true i
   return true;
 }
 
+/* v19 POP-UP RAMP (L2, L4, L8): a hydraulic launch ramp that rises and sinks on a slow rhythm. Hit it while it's up
+   and it fires you skyward (higher = bigger launch; fully up = MAX POP!). Hit it while it's down and you just roll over a
+   flat pad, never a crash, so timing your throttle is the game. One mesh, one draw call, its glow brightens as it rises. */
+const popMat = new THREE.MeshStandardMaterial({ color:0xffffff, vertexColors:true, emissive:0x1a6aa0, emissiveIntensity:0.25, roughness:0.5, flatShading:true, side:THREE.DoubleSide });
+function buildPopRamp(level, framesData){
+  level._pop = null; if(!level.popRamp) return;
+  const g0 = level._gate, D = level._dol, K = level._kick, Lv = level._lava;
+  const steepX = []; for(const sg of framesData.segs) for(const f of sg.frames) if(f.normal.y < 0.5) steepX.push(f.pos.x);
+  // the pad sits in the back part of a flat run so the car has settled onto its wheels (not still flying off the last hump)
+  const padX = r => Math.min(r.b.pos.x - 2.5, r.a.pos.x + Math.max(6, (r.b.pos.x - r.a.pos.x)*0.7));
+  const clear = (r, ahead) => { const x0 = padX(r) - 3, x1 = padX(r) + 3; return x0 > 40 && !steepX.some(x => x > x0-10 && x < x1+ahead) && !(g0 && g0.bx > x0-8 && g0.bx < x1+8) && !(D && D.tx > x0-8 && D.tx < x1+8) && !(K && Math.abs(K.cx - (x0+x1)/2) < 16) && !(Lv && Lv.x0 !== undefined && x1 > Lv.x0-6 && x0 < Lv.x1+6); };
+  let run = null; for(const [mn, ahead] of [[12,80],[9,70],[8,60],[7,50]]){ run = flatRuns(level, framesData, mn).find(r => clear(r, ahead)); if(run) break; } if(!run) return;
+  const cx = padX(run), W = TRACK_W*0.8;
+  const P = [], cy = new THREE.Color(0x30d0ff), wht = new THREE.Color(0xf4fbff), dk = new THREE.Color(0x203048), org = new THREE.Color(0xff8a2a);
+  const wedge = new THREE.BufferGeometry(); // 3.2 m wedge, 1.3 m tall at the front (+x); origin at the base so scale.y raises it
+  const H = 1.3, v = [ -1.6,0,-W/2, 1.6,0,-W/2, 1.6,H,-W/2,  -1.6,0,W/2, 1.6,H,W/2, 1.6,0,W/2,
+    -1.6,0,-W/2, 1.6,H,-W/2, 1.6,H,W/2,  -1.6,0,-W/2, 1.6,H,W/2, -1.6,0,W/2,
+    1.6,0,-W/2, 1.6,0,W/2, 1.6,H,W/2,  1.6,0,-W/2, 1.6,H,W/2, 1.6,H,-W/2 ];
+  wedge.setAttribute('position', new THREE.Float32BufferAttribute(v,3)); wedge.computeVertexNormals(); P.push(_dolPart(wedge, cy));
+  for(let i=0;i<3;i++){ const ch = new THREE.BoxGeometry(0.3, 0.05, W*0.7); ch.rotateZ(Math.atan2(H,3.2)); ch.translate(-1.0+i*1.0, 0.24+i*0.4, 0); P.push(_dolPart(ch, i===2?org:wht)); }
+  const plate = new THREE.BoxGeometry(3.6, 0.06, W*1.05); plate.translate(0,0.03,0); P.push(_dolPart(plate, dk));
+  const m = new THREE.Mesh(mergeGeometries(P), popMat.clone()); const f = nearestFrameToXY(framesData, cx, run.a.pos.y);
+  m.position.set(cx, f.pos.y + 0.02, f.pos.z); m.scale.y = 0.1; pickupGroup.add(m);
+  level._pop = { m, x:cx, y:f.pos.y, t:0, h:0.1, cool:0, hits:0, maxPops:0, rolls:0 };
+}
+function popHeight(t){ const u = 0.5 + 0.5*Math.sin(t*1.9 - 1.2); const k = Math.min(1, Math.max(0, (u-0.15)/0.7)); return 0.1 + 0.9*k*k*(3-2*k); }
+function updatePopRamp(dt){
+  const Q = state.level && state.level._pop; if(!Q) return;
+  Q.t += dt; if(Q.cool > 0) Q.cool -= dt; Q.h = popHeight(Q.t);
+  Q.m.scale.y = Q.h; Q.m.material.emissiveIntensity = 0.15 + 0.85*Q.h*Q.h;
+}
+const _popAirT = new THREE.Vector3(1,0,0), _popFr = { tangent:_popAirT };
+function popRampHit(fr, air){ // grounded physics step (or a low airborne skim over the pad); true if the car was launched
+  const Q = state.level && state.level._pop; if(!Q || Q.cool > 0) return false;
+  const spd = air ? Math.abs(car.vel.x) : car.speed; if(spd < 4) return false;
+  if(Math.abs(car.pos.x - Q.x) > 1.6) return false;
+  if(air){ const dy = car.pos.y - Q.y; if(car.vel.y > 0 || dy > 1.4 + 1.3*Q.h || dy < -0.5 || Q.h < 0.4) return false; car.speed = spd; } // touched the raised pad on the way down
+  else if(Math.abs(car.pos.y - Q.y) > 3) return false;
+  if(Q.h < 0.4){ Q.cool = 0.6; Q.rolls++; return false; } // down: just a flat pad
+  const max = Q.h > 0.85; Q.cool = 1.0; Q.hits++; if(max) Q.maxPops++; state.pops = (state.pops||0)+1;
+  car.grounded=false; car.lipLaunch=true; car.airGrace=0.35;
+  car.vel.copy(fr.tangent).multiplyScalar(Math.min(26, Math.max(10, car.speed))); car.vel.y = Math.min(23, (8 + car.speed*0.45) * (0.6 + 0.45*Q.h));
+  car.pitch=0; car.pitchVel=0; car.flipAcc=0; susp.vF -= 2.2; susp.vR -= 2.2;
+  state.jumps=(state.jumps||0)+1; state.shake=Math.max(state.shake, max?0.3:0.2); state.fovPunch=Math.min(1,state.fovPunch+(max?0.35:0.22));
+  for(let i=0;i<(max?18:10);i++) spawnParticle(Q.x+1.6, Q.y+1.2*Q.h, car.pos.z+(Math.random()-0.5)*2, (Math.random()-0.2)*5, 3+Math.random()*5, (Math.random()-0.5)*3, 0.55, 0.35, 0.9, 1.0);
+  if(audio.boost) audio.boost(); audio.click(); haptic(max?22:14); addScore(max?220:120, max?'MAX POP!':'POP-UP RAMP!', 'pop');
+  return true;
+}
+
 /* v11 TOY TRAIN: races alongside the track behind it (research #7 "a train running alongside"); one rail + two meshes */
 const trainBodyMat = new THREE.MeshStandardMaterial({ color:0xd8402c, metalness:0.3, roughness:0.5, emissive:0x401008, emissiveIntensity:0.3 });
 const trainTrimMat = new THREE.MeshStandardMaterial({ color:0x2a2e3a, metalness:0.6, roughness:0.4 });
@@ -1743,7 +1803,7 @@ function startLevel(idx, endless=false, fromCheckpoint=false){
   } else {
     level = LEVELS[idx];
   }
-  state.level = level; state.padsUsed = new Set(); state.padHits = 0; state.kicks = 0;
+  state.level = level; state.padsUsed = new Set(); state.padHits = 0; state.kicks = 0; state.pops = 0;
   state.starsTotal = level.stars.length;
   const th = applyTheme(level.theme);
   audio.music(level.theme); // v13: each world has its own tune
@@ -1780,7 +1840,12 @@ function startLevel(idx, endless=false, fromCheckpoint=false){
   showPlayUI(true);
   hideOverlay();
   updateHUD();
+  prewarmShaders();
 }
+/* v19 TECH: compile every material in the level up front, while the start banner is up, instead of the first time each
+   prop scrolls into view mid-run (each first sighting used to compile a shader program = a visible hitch). */
+let _prewarmN=0;
+function prewarmShaders(){ try{ const hid=[]; scene.traverse(o=>{ if(o.isMesh && !o.visible){ o.visible=true; hid.push(o); } }); renderer.compile(scene, camera); for(const o of hid) o.visible=false; _prewarmN++; }catch(e){} }
 
 function makeEndlessChunk(n){
   const keys = Object.keys(THEMES);
@@ -1858,13 +1923,15 @@ function popup(text, cls){ // v8: single reused popup; repeats combine ("BACKFLI
   el.textContent = _pop.n>1 ? text+' ×'+_pop.n : text;
   el.style.animation='none'; requestAnimationFrame(()=>{ el.style.animation=''; });
 }
+const comboEl=document.getElementById('combo'); let _comboOn=false; // v19: cached element, class-driven eased show/hide
+function setComboVisible(on){ if(on===_comboOn) return; _comboOn=on; comboEl.classList.toggle('show', on); }
 function punchCombo(){
-  const el=document.getElementById('combo');
+  const el=comboEl;
   if(state.combo>=2){
     el.textContent='COMBO ×'+state.mult;
-    el.style.opacity='1';
+    setComboVisible(true);
     el.classList.remove('punch'); requestAnimationFrame(()=>el.classList.add('punch')); // v8: no forced reflow
-  } else el.style.opacity='0';
+  } else setComboVisible(false);
 }
 function starString(n){
   n = Math.max(0, Math.min(3, n|0));
@@ -1879,28 +1946,36 @@ function computeStarGrade(){
   if(state.starsGot >= tot && tot > 0) g = 3;
   return g;
 }
-const _hud = { score:-1, mult:-1, grade:'', star:'', el:null };
+const _hud = { score:-1, mult:-1, grade:'', star:'', el:null, sk:'', fuelCls:'' };
+const fuelWrapEl=document.getElementById('fuelWrap');
+function _bump(el){ el.classList.remove('bump'); requestAnimationFrame(()=>{ el.classList.add('bump'); setTimeout(()=>el.classList.remove('bump'), 140); }); } // v19: eased score bump
 function updateHUD(){
   if(!_hud.el) _hud.el = { sc:document.getElementById('scorePanel'), mu:document.getElementById('multPanel'), gr:document.getElementById('gradePanel'), sh:document.getElementById('starHud') };
   const E=_hud.el;
-  if(state.score!==_hud.score){ _hud.score=state.score; E.sc.textContent = state.score.toLocaleString(); }
-  if(state.mult!==_hud.mult){ _hud.mult=state.mult; E.mu.textContent = '×'+state.mult; }
+  if(state.score!==_hud.score){ const up = state.score>_hud.score && _hud.score>=0; _hud.score=state.score; E.sc.textContent = state.score.toLocaleString(); if(up && state.mode==='play') _bump(E.sc); }
+  if(state.mult!==_hud.mult){ _hud.mult=state.mult; E.mu.textContent = '×'+state.mult; E.mu.classList.toggle('hot', state.mult>1); if(state.mult>1) _bump(E.mu); }
   const live = state.mode==='play' ? computeStarGrade() : state.starGrade;
   const s = starString(live);
   if(s!==_hud.grade){ _hud.grade=s; E.gr.textContent = s; }
   const cn = state.level && state.level._coins ? state.level._coins.n : 0;
-  const hs = s+'  '+state.starsGot+'/'+state.starsTotal+(cn?'  <span class="coin">● '+(state.coins||0)+'/'+cn+'</span>':'')+(state.level&&state.level.gold?(state.goldGot?'  <span class="gold">✪ GOLD</span>':'  ✧ ?'):'');
-  if(E.sh && hs!==_hud.star){ _hud.star=hs; E.sh.innerHTML = hs; }
-  { const fw = Math.round(state.fuel*100); if(fw!==_fuelW){ _fuelW=fw; fuelFillEl.style.width = fw+'%'; rocketFillEl.style.transform='scaleX('+(fw/100)+')'; btnThrust.style.opacity = fw>2?'1':'0.55'; } }
+  // v19 TECH: only rebuild the star/coin HTML string when one of its inputs changes (was a fresh string every physics step)
+  const lv = state.level, gk = lv&&lv.gold ? (state.goldGot?2:1) : 0, co = state.coins||0;
+  if(E.sh && (s!==_hud.sk || state.starsGot!==_hud.sg || state.starsTotal!==_hud.st || cn!==_hud.cn || co!==_hud.co || gk!==_hud.gk)){
+    _hud.sk=s; _hud.sg=state.starsGot; _hud.st=state.starsTotal; _hud.cn=cn; _hud.co=co; _hud.gk=gk;
+    const hs = s+'  '+state.starsGot+'/'+state.starsTotal+(cn?'  <span class="coin">● '+co+'/'+cn+'</span>':'')+(gk?(gk===2?'  <span class="gold">✪ GOLD</span>':'  ✧ ?'):'');
+    if(hs!==_hud.star){ _hud.star=hs; E.sh.innerHTML = hs; } }
+  { const fw = Math.round(state.fuel*100); if(fw!==_fuelW){ _fuelW=fw; fuelFillEl.style.transform = 'scaleX('+(fw/100)+')'; rocketFillEl.style.transform='scaleX('+(fw/100)+')'; btnThrust.style.opacity = fw>2?'1':'0.55'; // v19: compositor-only transform (no layout)
+      const fc = fw<25 ? 'low' : (fw>=99 ? 'full' : ''); if(fc!==_hud.fuelCls){ if(_hud.fuelCls) fuelWrapEl.classList.remove(_hud.fuelCls); if(fc) fuelWrapEl.classList.add(fc); _hud.fuelCls=fc; } } }
 }
 
 function showPlayUI(on){
   document.getElementById('hudTop').style.display = on?'flex':'none';
-  document.getElementById('fuelWrap').style.display = on?'block':'none';
+  document.getElementById('fuelWrap').style.display = on?'flex':'none';
   const sh = document.getElementById('starHud');
   if(sh) sh.style.display = on?'block':'none';
   document.getElementById('controls').style.display = on?'block':'none';
   document.getElementById('tiltToggle').style.display = on?'block':'none';
+  if(!on) setComboVisible(false);
 }
 function hideOverlay(){ document.getElementById('overlay').classList.add('hidden'); }
 function showOverlay(){ document.getElementById('overlay').classList.remove('hidden'); }
@@ -2176,7 +2251,7 @@ function physicsStep(dt){
   if(state.level && state.level._fans) for(const f of state.level._fans) if(f.cool>0) f.cool -= dt;
   const lean = effectiveLean();
   state.comboTimer = Math.max(0, state.comboTimer-dt);
-  if(state.comboTimer<=0){ state.combo=0; state.mult=1; document.getElementById('combo').style.opacity='0'; }
+  if(state.comboTimer<=0){ state.combo=0; state.mult=1; if(_comboOn) setComboVisible(false); } // v19: no per-step DOM lookup/style write
 
   // fuel
   if(input.thrust && state.fuel>0){
@@ -2294,6 +2369,7 @@ function physicsStep(dt){
         }
       }
       if(kickerHit(fr)) return; // v18 sliding kicker ramp
+      if(popRampHit(fr)) return; // v19 pop-up ramp
       { const fan = fanAt(car.pos.x, car.pos.y); // v11 WIND FAN: drive over it → the air pops you up, the column keeps lifting
         if(fan && fan.cool <= 0 && Math.abs(car.pos.x - fan.x) < 1.4){
           fan.cool = 1.2; fan.hits++; state.fanHits = (state.fanHits||0) + 1;
@@ -2316,6 +2392,7 @@ function physicsStep(dt){
 
   } else {
     // Airborne — weighty SP rotation
+    if(car.vel.y < 0 && state.level && state.level._pop && popRampHit(_popFr, true)) return; // v19: a raised pop-up ramp catches a low landing too
     car.airTime += dt;
     if(car.loopDropT>0) car.loopDropT-=dt;
     if(car.airGrace > 0) car.airGrace = Math.max(0, car.airGrace - dt);
@@ -2582,7 +2659,7 @@ function physicsStep(dt){
     state.chunks.push(1);
     addScore(500, 'ZONE +');
     const level = makeEndlessChunk(n);
-    state.level = level; state.padsUsed = new Set(); state.padHits = 0; state.kicks = 0;
+    state.level = level; state.padsUsed = new Set(); state.padHits = 0; state.kicks = 0; state.pops = 0;
     state.starsTotal += level.stars.length;
     const th = applyTheme(level.theme); audio.music(level.theme); // v13: endless zones switch tunes with the world
     state.framesData = buildFrames(level.segments);
@@ -2682,7 +2759,7 @@ function updateCamera(dt){
   camera.lookAt(camState.look);
   const fovT = 52 + Math.min(0.6, state.fovPunch) * 9 + Math.min(7, Math.abs(car.speed) * 0.1);
   _cv.fov += (fovT - _cv.fov) * damp(6, dt);
-  if(Math.abs(camera.fov - _cv.fov) > 0.01){ camera.fov = _cv.fov; camera.updateProjectionMatrix(); }
+  if(Math.abs(camera.fov - _cv.fov) > 0.04){ camera.fov = _cv.fov; camera.updateProjectionMatrix(); } // v19: 0.04° step (invisible) = far fewer matrix inversions
   const op = Math.min(0.45, state.fovPunch * 0.4 + Math.abs(car.speed) / 140).toFixed(2);
   if(_cv.op !== op){ _cv.op = op; speedLinesEl.style.opacity = op; }
 }
@@ -2730,7 +2807,7 @@ function frame(now){
     B.rotation.z = (susp.cR - susp.cF)/SUSP.wb + state.gLean;
     for(const h of carVisual.hubs){ h.hub.position.y = h.baseY + (h.front ? susp.hF : susp.hR); h.hub.rotation.z = -susp.spin; }
   } else { carVisual.body.position.y = SUSP.lift - SUSP.sag; carVisual.body.rotation.z = 0; for(const h of carVisual.hubs){ h.hub.position.y=h.baseY; } }
-  updateCoins(raw); if(state.mode==='play'){ updateFans(raw); updateTrain(raw); updateBridge(raw); updateGate(raw); updateLava(raw); updateDolphins(raw); updateKicker(raw); } updateGhost();
+  updateCoins(raw); if(state.mode==='play'){ updateFans(raw); updateTrain(raw); updateBridge(raw); updateGate(raw); updateLava(raw); updateDolphins(raw); updateKicker(raw); updatePopRamp(raw); } updateGhost();
   audio.engine(state.mode==='play' && !document.hidden, car.speed, !!input.gas, car.grounded, !!(input.thrust && state.fuel>0 && state.mode==='play'));
   for(const n of carVisual.nozzles){
     n.material.emissiveIntensity = (input.thrust && state.fuel>0 && state.mode==='play') ? 1.2 : 0.25;
@@ -2793,7 +2870,10 @@ requestAnimationFrame(frame);
 
 // Expose for smoke tests
 window.__RSP = {
-  version:18, kicker:()=>{ const K=state.level&&state.level._kick; return K?{x:K.x, cx:K.cx, amp:K.amp, hits:K.hits, kicks:state.kicks||0, carX:car.pos.x, air:!car.grounded}:null; }, seaFx:()=>({fog:seaMat.fog, ei:seaMat.emissiveIntensity, embers:seaState.embers||0, caps:seaState.caps||0}), calls:()=>renderer.info.render.calls,
+  version:19, popRamp:()=>{ const Q=state.level&&state.level._pop; return Q?{x:Q.x, y:Q.y, h:+Q.h.toFixed(3), t:Q.t, hits:Q.hits, maxPops:Q.maxPops, rolls:Q.rolls, pops:state.pops||0, carX:car.pos.x, air:!car.grounded, scaleY:Q.m.scale.y}:null; }, setPopPhase:(t)=>{ const Q=state.level&&state.level._pop; if(Q){ Q.t=t; Q.cool=0; } }, popHeight,
+  hud:()=>{ const r=id=>{ const e=document.getElementById(id); if(!e||getComputedStyle(e).display==='none') return null; const b=e.getBoundingClientRect(); return {x:b.left,y:b.top,w:b.width,h:b.height}; }; return {score:r('scorePanel'), mult:r('multPanel'), grade:r('gradePanel'), tilt:r('tiltToggle'), music:r('musicBtn'), pause:r('pauseBtn'), fuel:r('fuelWrap'), combo:r('combo'), starHud:r('starHud'), comboShown:comboEl.classList.contains('show'), fuelCls:fuelWrapEl.className}; },
+  forceCombo:(n)=>{ state.combo=n; state.mult=n; state.comboTimer=3; punchCombo(); updateHUD(); }, prewarms:()=>_prewarmN, programs:()=>renderer.info.programs.length, pTex:()=>!!pMat.map, staticFrozen:()=>{ let n=0,f=0; for(const G of [trackGroup,decorGroup]) G.traverse(o=>{ if(o!==G){ n++; if(!o.matrixAutoUpdate) f++; } }); return {n,f}; },
+  kicker:()=>{ const K=state.level&&state.level._kick; return K?{x:K.x, cx:K.cx, amp:K.amp, hits:K.hits, kicks:state.kicks||0, carX:car.pos.x, air:!car.grounded}:null; }, seaFx:()=>({fog:seaMat.fog, ei:seaMat.emissiveIntensity, embers:seaState.embers||0, caps:seaState.caps||0}), calls:()=>renderer.info.render.calls,
   audio, sea:()=>({visible:sea.visible, key:seaState.key, y:sea.position.y, h0:seaGeo.attributes.position.array[1], h1:seaGeo.attributes.position.array[301], t:seaState.t, camDx:Math.abs(sea.position.x-camera.position.x)}), dolphins:()=>{ const D=state.level&&state.level._dol; return D?{n:D.pods.length, fired:D.fired, splashes:D.splashes, highFive:D.highFive, peak:D.peakSeen, maxY:Math.max(...D.pods.map(p=>p.m.position.y)), slowmo:state.dolSlowmo||0, highFives:state.dolHighFives||0}:null; },
   finale:()=>({active:!!state.finale, t:state.finale?+state.finale.t.toFixed(2):0, bursts:state.finale?state.finale.bursts:0, count:state.finaleCount||0, cardShown:!document.getElementById('overlay').classList.contains('hidden')}),
   sky:()=>{ const U=skyMat.uniforms; return {top:U.top.value.getHexString(), hor:U.hor.value.getHexString(), fog:scene.fog?scene.fog.color.getHexString():null, clouds:clouds.count, cloudVis:clouds.visible, domeAtCam:skyDome.position.distanceTo(camera.position)<0.01}; }, failRun, _sample:sampleSegment, _renderer:renderer, _scene:scene,
