@@ -453,6 +453,7 @@ function addSetPieces(){ // v9: research set pieces — kid-safe bounce pad + po
   // v14 SWITCH GATES (research: "buttons that lower ramps", switch puzzles) and kid-safe LAVA BLOBS (research: lava bombs)
   LEVELS[1].gate=true; LEVELS[3].gate=true; LEVELS[5].gate=true; LEVELS[7].gate=90; // the L8 finale's long flat is jumped over, so pin the gate to the pre-loop straight
   LEVELS[6].lava=3;
+  LEVELS[0].kicker=true; LEVELS[2].kicker=true; LEVELS[5].kicker=true; // v18: sliding kicker ramp (research: moving ramps / moving track pieces)
   LEVELS[1].dolphins=true; LEVELS[7].dolphins=true; // v17: dolphin leap set piece over the sea (research: slow-mo animal jumps; kid-safe dolphins, not sharks)
 }
 (function buildLevels(){
@@ -663,7 +664,8 @@ const seaMat = new THREE.MeshPhongMaterial({ color:0x1ea8d8, emissive:0x0a4a70, 
 const sea = new THREE.Mesh(seaGeo, seaMat); sea.frustumCulled = false; sea.visible = false; sea.renderOrder = 0; scene.add(sea);
 const seaState = { key:null, amp:0.5, spd:1, t:0, frames:0, cell:SEA.W/SEA.NX };
 function setSeaTheme(key){ const T = SEA_THEME[key]; seaState.key = T ? key : null; sea.visible = !!T; if(!T) return;
-  seaMat.color.set(T.c); seaMat.emissive.set(T.e); seaMat.emissiveIntensity = T.ei; seaMat.shininess = 90*(1-T.rough); seaMat.specular.set(T.metal>0.2?0xe8f6ff:(key==='volcano'?0x401000:0x9adcf0)); seaState.amp = T.amp; seaState.spd = T.spd; }
+  seaMat.color.set(T.c); seaMat.emissive.set(T.e); seaMat.emissiveIntensity = T.ei; seaMat.shininess = 90*(1-T.rough); seaMat.specular.set(T.metal>0.2?0xe8f6ff:(key==='volcano'?0x401000:0x9adcf0)); seaState.amp = T.amp; seaState.spd = T.spd;
+  const nf = key!=='volcano'; if(seaMat.fog !== nf){ seaMat.fog = nf; seaMat.needsUpdate = true; } } // v18: lava ignores the red haze so it glows all the way to the horizon
 function seaHeight(x, z, t){ const a = seaState.amp; return a*(0.55*Math.sin(x*0.16 + t*1.3) + 0.35*Math.sin(z*0.23 - t*1.05 + x*0.05) + 0.25*Math.sin((x+z)*0.37 + t*2.1)); }
 function updateSea(dt){
   if(!sea.visible) return; seaState.t += dt*seaState.spd; seaState.frames++;
@@ -672,6 +674,10 @@ function updateSea(dt){
   const P = seaGeo.attributes.position.array, t = seaState.t, sz = sea.position.z;
   for(let i=0;i<P.length;i+=3){ P[i+1] = seaHeight(ox + seaBase[i], sz + seaBase[i+2], t); }
   seaGeo.attributes.position.needsUpdate = true;
+  if(seaState.key==='volcano'){ seaMat.emissiveIntensity = 0.62 + 0.18*Math.sin(t*1.7); // v18: slow lava pulse + embers drifting up off the lava
+    if(Math.random() < (LITE.on?0.25:0.5)*dt*60){ const ex = camera.position.x + (Math.random()-0.3)*70, ez = -14 - Math.random()*40; spawnParticle(ex, SEA.Y+0.8, ez, (Math.random()-0.5)*1.2, 3+Math.random()*4, 0, 1.4, 1, 0.45+Math.random()*0.3, 0.08); seaState.embers=(seaState.embers||0)+1; } }
+  else if(Math.random() < (LITE.on?0.15:0.3)*dt*60){ const wx = camera.position.x + (Math.random()-0.3)*70, wz = -10 - Math.random()*35; // v18: whitecap sparkle on the water
+    spawnParticle(wx, SEA.Y+0.7+seaHeight(wx,wz,t), wz, (Math.random()-0.5)*0.8, 1.2+Math.random()*1.2, 0, 0.5, 0.95, 0.98, 1.0); seaState.caps=(seaState.caps||0)+1; }
 }
 let trackGroup = new THREE.Group();
 let decorGroup = new THREE.Group();
@@ -1063,7 +1069,7 @@ function buildPickups(level, framesData){
     bp._mesh = m; m.visible = true;
     pickupGroup.add(m);
   }
-  buildFans(level, framesData); buildTrain(level, framesData); buildBridge(level, framesData); buildGate(level, framesData); buildLava(level, framesData); buildDolphins(level, framesData);
+  buildFans(level, framesData); buildTrain(level, framesData); buildBridge(level, framesData); buildGate(level, framesData); buildLava(level, framesData); buildDolphins(level, framesData); buildKicker(level, framesData);
   const starMat = new THREE.MeshStandardMaterial({ color:0xffd76a, emissive:0xffaa20, emissiveIntensity:0.8, metalness:0.4, roughness:0.3 });
   const barrelMat = new THREE.MeshStandardMaterial({ color:0xc03018, emissive:0x801000, emissiveIntensity:0.35, metalness:0.3, roughness:0.55 });
   const crateMat = new THREE.MeshStandardMaterial({ color:0xc8a050, emissive:0x403010, emissiveIntensity:0.15, metalness:0.15, roughness:0.7 });
@@ -1448,19 +1454,22 @@ function updateLava(dt){
 /* v17 DOLPHIN LEAP (Beach L2, Paradise L8): two friendly low-poly dolphins arc out of the sea behind the track as the car
    comes by, with splashes, a squeak and a short slow-mo. Being in the air at their peak = DOLPHIN HIGH-FIVE (+150). Visual only:
    they never touch the road, so nothing can block or crash a run. */
-const dolBodyMat = new THREE.MeshStandardMaterial({ color:0x6f8fb0, emissive:0x1a2a40, emissiveIntensity:0.35, roughness:0.45, flatShading:true });
-const dolBellyMat = new THREE.MeshStandardMaterial({ color:0xe8eef4, emissive:0x404850, emissiveIntensity:0.3, roughness:0.5, flatShading:true });
-function makeDolphin(){
-  const g = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), dolBodyMat); body.scale.set(2.3, 0.75, 0.75); g.add(body);
-  const belly = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), dolBellyMat); belly.scale.set(1.9, 0.5, 0.6); belly.position.set(0.1,-0.28,0); g.add(belly);
-  const snout = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.9, 8), dolBodyMat); snout.rotation.z = -Math.PI/2; snout.position.x = 2.45; g.add(snout);
-  const fin = new THREE.Mesh(new THREE.ConeGeometry(0.35, 0.9, 6), dolBodyMat); fin.position.set(-0.2, 0.85, 0); fin.rotation.z = 0.45; fin.scale.z = 0.35; g.add(fin);
-  const tail = new THREE.Mesh(new THREE.ConeGeometry(0.32, 1.2, 6), dolBodyMat); tail.rotation.z = Math.PI/2; tail.position.x = -2.6; g.add(tail);
-  const fluke = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.1, 1.5), dolBodyMat); fluke.position.x = -3.2; g.add(fluke);
-  const eye = new THREE.Mesh(new THREE.SphereGeometry(0.09, 6, 4), gateBaseMat); eye.position.set(1.7, 0.18, 0.62); g.add(eye);
-  g.visible = false; return g;
-}
+const dolMat = new THREE.MeshStandardMaterial({ color:0xffffff, vertexColors:true, emissive:0x1a2a40, emissiveIntensity:0.3, roughness:0.45, flatShading:true });
+// v18 TECH: each dolphin is ONE merged, vertex-coloured mesh (was 7 meshes = 7 draw calls); the geometry is built once and shared
+const _dolC = { body:new THREE.Color(0x6f8fb0), belly:new THREE.Color(0xe8eef4), eye:new THREE.Color(0x1a1c22) };
+function _dolPart(g, col){ g = g.index ? g.toNonIndexed() : g; g.deleteAttribute('uv'); const n = g.attributes.position.count, c = new Float32Array(n*3);
+  for(let i=0;i<n;i++){ c[i*3]=col.r; c[i*3+1]=col.g; c[i*3+2]=col.b; } g.setAttribute('color', new THREE.BufferAttribute(c,3)); return g; }
+let _dolGeo = null;
+function dolphinGeo(){ if(_dolGeo) return _dolGeo; const P = [];
+  let g = new THREE.IcosahedronGeometry(1, 1); g.scale(2.3, 0.75, 0.75); P.push(_dolPart(g, _dolC.body));
+  g = new THREE.IcosahedronGeometry(1, 1); g.scale(1.9, 0.5, 0.6); g.translate(0.1,-0.28,0); P.push(_dolPart(g, _dolC.belly));
+  g = new THREE.ConeGeometry(0.28, 0.9, 8); g.rotateZ(-Math.PI/2); g.translate(2.45,0,0); P.push(_dolPart(g, _dolC.body));
+  g = new THREE.ConeGeometry(0.35, 0.9, 6); g.scale(1,1,0.35); g.rotateZ(0.45); g.translate(-0.2,0.85,0); P.push(_dolPart(g, _dolC.body));
+  g = new THREE.ConeGeometry(0.32, 1.2, 6); g.rotateZ(Math.PI/2); g.translate(-2.6,0,0); P.push(_dolPart(g, _dolC.body));
+  g = new THREE.BoxGeometry(0.35, 0.1, 1.5); g.translate(-3.2,0,0); P.push(_dolPart(g, _dolC.body));
+  g = new THREE.SphereGeometry(0.09, 6, 4); g.translate(1.7,0.18,0.62); P.push(_dolPart(g, _dolC.eye));
+  _dolGeo = mergeGeometries(P); return _dolGeo; }
+function makeDolphin(){ const m = new THREE.Mesh(dolphinGeo(), dolMat); m.visible = false; return m; }
 function buildDolphins(level, framesData){
   level._dol = null; if(!level.dolphins) return;
   const runs = flatRuns(level, framesData, 8); if(!runs.length) return;
@@ -1487,6 +1496,48 @@ function updateDolphins(dt){
       if(!car.grounded){ D.highFive = true; state.dolHighFives = (state.dolHighFives||0)+1; addScore(150, 'DOLPHIN HIGH-FIVE!', 'combo'); haptic(15); } }
     if(u >= 1 && !p.inn){ p.inn = true; dolSplash(x, p.z, false); D.splashes++; audio.splash(0.6); }
   }
+}
+
+
+/* v18 SLIDING KICKER RAMP (L1, L3, L6): a striped wedge that glides back and forth along a flat stretch. Catch it on your
+   wheels and it kicks you into the air; the faster you hit it, the bigger the launch, so throttle and timing matter.
+   Miss it and nothing happens (it's never a crash), so it can't block a run. One merged mesh = 1 draw call. */
+const kickMat = new THREE.MeshStandardMaterial({ color:0xffffff, vertexColors:true, emissive:0x302008, emissiveIntensity:0.35, roughness:0.55, flatShading:true, side:THREE.DoubleSide });
+function buildKicker(level, framesData){
+  level._kick = null; if(!level.kicker) return;
+  const g0 = level._gate, D = level._dol;
+  const steepX = []; for(const sg of framesData.segs) for(const f of sg.frames) if(f.normal.y < 0.5) steepX.push(f.pos.x); // loop / wall-ride sections
+  const okRun = r => !steepX.some(x => x > r.a.pos.x-10 && x < r.b.pos.x+40) && !(g0 && g0.bx > r.a.pos.x-8 && g0.bx < r.b.pos.x+8) && !(D && D.tx > r.a.pos.x-8 && D.tx < r.b.pos.x+8);
+  let run = null; for(const mn of [18,14,12]){ run = flatRuns(level, framesData, mn).find(okRun); if(run) break; } if(!run) return;
+  const len = run.b.pos.x - run.a.pos.x, cx = (run.a.pos.x + run.b.pos.x)/2, amp = Math.max(1, Math.min(5, (len-10)/2));
+  const P = [], W = TRACK_W*0.8, yel = new THREE.Color(0xffd030), blk = new THREE.Color(0x26262c), red = new THREE.Color(0xe8402c);
+  const wedge = new THREE.BufferGeometry(); // a 3 m long wedge rising to 0.9 m, front (+x) high
+  const v = [ -1.5,0,-W/2, 1.5,0,-W/2, 1.5,0.9,-W/2,  -1.5,0,W/2, 1.5,0.9,W/2, 1.5,0,W/2,
+    -1.5,0,-W/2, 1.5,0.9,-W/2, 1.5,0.9,W/2,  -1.5,0,-W/2, 1.5,0.9,W/2, -1.5,0,W/2,
+    1.5,0,-W/2, 1.5,0,W/2, 1.5,0.9,W/2,  1.5,0,-W/2, 1.5,0.9,W/2, 1.5,0.9,-W/2 ];
+  wedge.setAttribute('position', new THREE.Float32BufferAttribute(v,3)); wedge.computeVertexNormals(); P.push(_dolPart(wedge, yel));
+  for(let i=0;i<3;i++){ const st = new THREE.BoxGeometry(0.32, 0.05, W*1.01); st.rotateZ(Math.atan2(0.9,3)); st.translate(-1.0+i*1.0, 0.16+i*0.3, 0); P.push(_dolPart(st, blk)); }
+  for(const z of [-W/2-0.1, W/2+0.1]){ const wh = new THREE.CylinderGeometry(0.22,0.22,0.16,10); wh.rotateX(Math.PI/2); for(const x of [-1.1,1.1]){ const w2 = wh.clone(); w2.translate(x,0.2,z); P.push(_dolPart(w2, red)); } }
+  const m = new THREE.Mesh(mergeGeometries(P), kickMat); const f = nearestFrameToXY(framesData, cx, run.a.pos.y);
+  m.position.set(cx, f.pos.y + 0.02, f.pos.z); pickupGroup.add(m);
+  level._kick = { m, cx, y:f.pos.y, amp, t:0, x:cx, cool:0, hits:0 };
+}
+function updateKicker(dt){
+  const K = state.level && state.level._kick; if(!K) return;
+  K.t += dt; if(K.cool > 0) K.cool -= dt;
+  K.x = K.cx + K.amp*Math.sin(K.t*2.1); K.m.position.x = K.x;
+}
+function kickerHit(fr){ // called from the grounded physics step; returns true if the car was launched
+  const K = state.level && state.level._kick; if(!K || K.cool > 0 || car.speed < 4) return false;
+  if(Math.abs(car.pos.x - K.x) > 1.3 || Math.abs(car.pos.y - K.y) > 3) return false;
+  K.cool = 1.0; K.hits++; state.kicks = (state.kicks||0)+1;
+  car.grounded=false; car.lipLaunch=true; car.airGrace=0.35;
+  car.vel.copy(fr.tangent).multiplyScalar(Math.min(26, car.speed)); car.vel.y = Math.min(20, 8 + car.speed*0.45);
+  car.pitch=0; car.pitchVel=0; car.flipAcc=0; susp.vF -= 2.0; susp.vR -= 2.0;
+  state.jumps=(state.jumps||0)+1; state.shake=Math.max(state.shake,0.22); state.fovPunch=Math.min(1,state.fovPunch+0.25);
+  for(let i=0;i<14;i++) spawnParticle(K.x+1.5, K.y+0.8, car.pos.z+(Math.random()-0.5)*2, (Math.random()-0.2)*5, 2+Math.random()*5, (Math.random()-0.5)*3, 0.5, 1, 0.85, 0.3);
+  if(audio.boost) audio.boost(); audio.click(); haptic(16); addScore(100, 'RAMP RIDE!', 'pop');
+  return true;
 }
 
 /* v11 TOY TRAIN: races alongside the track behind it (research #7 "a train running alongside"); one rail + two meshes */
@@ -1692,7 +1743,7 @@ function startLevel(idx, endless=false, fromCheckpoint=false){
   } else {
     level = LEVELS[idx];
   }
-  state.level = level; state.padsUsed = new Set(); state.padHits = 0;
+  state.level = level; state.padsUsed = new Set(); state.padHits = 0; state.kicks = 0;
   state.starsTotal = level.stars.length;
   const th = applyTheme(level.theme);
   audio.music(level.theme); // v13: each world has its own tune
@@ -2242,6 +2293,7 @@ function physicsStep(dt){
           return;
         }
       }
+      if(kickerHit(fr)) return; // v18 sliding kicker ramp
       { const fan = fanAt(car.pos.x, car.pos.y); // v11 WIND FAN: drive over it → the air pops you up, the column keeps lifting
         if(fan && fan.cool <= 0 && Math.abs(car.pos.x - fan.x) < 1.4){
           fan.cool = 1.2; fan.hits++; state.fanHits = (state.fanHits||0) + 1;
@@ -2530,7 +2582,7 @@ function physicsStep(dt){
     state.chunks.push(1);
     addScore(500, 'ZONE +');
     const level = makeEndlessChunk(n);
-    state.level = level; state.padsUsed = new Set(); state.padHits = 0;
+    state.level = level; state.padsUsed = new Set(); state.padHits = 0; state.kicks = 0;
     state.starsTotal += level.stars.length;
     const th = applyTheme(level.theme); audio.music(level.theme); // v13: endless zones switch tunes with the world
     state.framesData = buildFrames(level.segments);
@@ -2678,7 +2730,7 @@ function frame(now){
     B.rotation.z = (susp.cR - susp.cF)/SUSP.wb + state.gLean;
     for(const h of carVisual.hubs){ h.hub.position.y = h.baseY + (h.front ? susp.hF : susp.hR); h.hub.rotation.z = -susp.spin; }
   } else { carVisual.body.position.y = SUSP.lift - SUSP.sag; carVisual.body.rotation.z = 0; for(const h of carVisual.hubs){ h.hub.position.y=h.baseY; } }
-  updateCoins(raw); if(state.mode==='play'){ updateFans(raw); updateTrain(raw); updateBridge(raw); updateGate(raw); updateLava(raw); updateDolphins(raw); } updateGhost();
+  updateCoins(raw); if(state.mode==='play'){ updateFans(raw); updateTrain(raw); updateBridge(raw); updateGate(raw); updateLava(raw); updateDolphins(raw); updateKicker(raw); } updateGhost();
   audio.engine(state.mode==='play' && !document.hidden, car.speed, !!input.gas, car.grounded, !!(input.thrust && state.fuel>0 && state.mode==='play'));
   for(const n of carVisual.nozzles){
     n.material.emissiveIntensity = (input.thrust && state.fuel>0 && state.mode==='play') ? 1.2 : 0.25;
@@ -2741,7 +2793,8 @@ requestAnimationFrame(frame);
 
 // Expose for smoke tests
 window.__RSP = {
-  version:17, audio, sea:()=>({visible:sea.visible, key:seaState.key, y:sea.position.y, h0:seaGeo.attributes.position.array[1], h1:seaGeo.attributes.position.array[301], t:seaState.t, camDx:Math.abs(sea.position.x-camera.position.x)}), dolphins:()=>{ const D=state.level&&state.level._dol; return D?{n:D.pods.length, fired:D.fired, splashes:D.splashes, highFive:D.highFive, peak:D.peakSeen, maxY:Math.max(...D.pods.map(p=>p.m.position.y)), slowmo:state.dolSlowmo||0, highFives:state.dolHighFives||0}:null; },
+  version:18, kicker:()=>{ const K=state.level&&state.level._kick; return K?{x:K.x, cx:K.cx, amp:K.amp, hits:K.hits, kicks:state.kicks||0, carX:car.pos.x, air:!car.grounded}:null; }, seaFx:()=>({fog:seaMat.fog, ei:seaMat.emissiveIntensity, embers:seaState.embers||0, caps:seaState.caps||0}), calls:()=>renderer.info.render.calls,
+  audio, sea:()=>({visible:sea.visible, key:seaState.key, y:sea.position.y, h0:seaGeo.attributes.position.array[1], h1:seaGeo.attributes.position.array[301], t:seaState.t, camDx:Math.abs(sea.position.x-camera.position.x)}), dolphins:()=>{ const D=state.level&&state.level._dol; return D?{n:D.pods.length, fired:D.fired, splashes:D.splashes, highFive:D.highFive, peak:D.peakSeen, maxY:Math.max(...D.pods.map(p=>p.m.position.y)), slowmo:state.dolSlowmo||0, highFives:state.dolHighFives||0}:null; },
   finale:()=>({active:!!state.finale, t:state.finale?+state.finale.t.toFixed(2):0, bursts:state.finale?state.finale.bursts:0, count:state.finaleCount||0, cardShown:!document.getElementById('overlay').classList.contains('hidden')}),
   sky:()=>{ const U=skyMat.uniforms; return {top:U.top.value.getHexString(), hor:U.hor.value.getHexString(), fog:scene.fog?scene.fog.color.getHexString():null, clouds:clouds.count, cloudVis:clouds.visible, domeAtCam:skyDome.position.distanceTo(camera.position)<0.01}; }, failRun, _sample:sampleSegment, _renderer:renderer, _scene:scene,
   bridge:()=>{ const b=state.level&&state.level._bridge; return b?{n:b.planks.length, x0:+b.x0.toFixed(1), x1:+b.x1.toFixed(1), fallen:b.fallen, cleared:b.cleared, runs:state.bridgeRuns||0}:null; },
