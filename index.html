@@ -251,6 +251,7 @@ const audio = (()=>{
     gold(){ duck(0.4,0.5); tone(784,0.1,'triangle',0.14); setTimeout(()=>tone(1046,0.1,'triangle',0.14),80); setTimeout(()=>tone(1568,0.3,'sine',0.14),160); noise(0.2,0.06); },
     boom(){ duck(0.3,0.45); noise(0.55,0.4); tone(70,0.5,'sine',0.3,-40); tone(140,0.25,'sawtooth',0.16,-90); setTimeout(()=>{ tone(900,0.12,'triangle',0.08); tone(1350,0.16,'sine',0.06); },120); },
     ui(){ tone(660,0.06,'triangle',0.08); },
+    firework(){ tone(500+Math.random()*300,0.18,'sine',0.05,700); setTimeout(()=>{ noise(0.35,0.12); tone(1800,0.08,'triangle',0.04); },140); }, // v16 finish fireworks (whistle + crackle)
     perfect(){ duck(0.5,0.35); tone(988,0.07,'triangle',0.12); setTimeout(()=>tone(1319,0.07,'triangle',0.12),60); setTimeout(()=>tone(1976,0.22,'sine',0.1),120); }, // v14 perfect landing chime
     click(){ tone(1400,0.03,'square',0.08); tone(500,0.07,'triangle',0.1); setTimeout(()=>tone(220,0.45,'sawtooth',0.035,260),70); }, // v14 button + gate motor
     bonk(){ duck(0.5,0.3); noise(0.18,0.2); tone(260,0.18,'sine',0.16,-180); tone(90,0.2,'sine',0.14,-30); }, // v14 lava blob bonk (soft, never a crash)
@@ -604,11 +605,50 @@ const world = new THREE.Group();
 scene.add(world);
 
 // Soft gradient sky dome (inside-out sphere)
-const skyGeo = new THREE.SphereGeometry(400, 24, 16);
-const skyMat = new THREE.MeshBasicMaterial({ color: 0x88c8e8, side: THREE.BackSide, depthWrite: false });
-const skyDome = new THREE.Mesh(skyGeo, skyMat);
+// v16 VISUAL: real vertical-gradient sky (zenith -> horizon that melts into the fog) + sun glow, follows the camera
+const SKY_GRAD = { // [zenith, horizon]; horizon matches each world's fog so the track fades into the sky seamlessly
+  desert:[0x5d9ee6,0xf4d49a], beach:[0x1673cf,0xa8e6f6], industrial:[0x4b5672,0xa2a8b4], cyber:[0x05031a,0x6a24a0],
+  candy:[0xa86ee0,0xffc6dc], ice:[0x4f92d6,0xe6f4ff], volcano:[0x2a0606,0xe0582a], paradise:[0x0868c4,0x84e8de] };
+const skyGeo = new THREE.SphereGeometry(280, 32, 16);
+const skyMat = new THREE.ShaderMaterial({ side: THREE.BackSide, depthWrite: false, fog: false,
+  uniforms: { top:{value:new THREE.Color(0x5d9ee6)}, hor:{value:new THREE.Color(0xf4d49a)}, low:{value:new THREE.Color(0xc4a060)},
+              sunDir:{value:new THREE.Vector3(0.45,0.55,-0.7).normalize()}, sunCol:{value:new THREE.Color(0xfff0d0)}, sunK:{value:1.0} },
+  vertexShader: 'varying vec3 vD; void main(){ vD = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+  fragmentShader: 'uniform vec3 top; uniform vec3 hor; uniform vec3 low; uniform vec3 sunDir; uniform vec3 sunCol; uniform float sunK; varying vec3 vD;'+
+    'void main(){ float h = vD.y; vec3 c = mix(hor, top, smoothstep(-0.02, 0.62, h)); c = mix(c, mix(hor, low, 0.45), smoothstep(0.0, -0.25, h));'+
+    'float d = max(dot(normalize(vD), sunDir), 0.0); c += sunCol * (pow(d, 220.0)*1.4 + pow(d, 14.0)*0.22 + pow(d, 3.0)*0.06) * sunK;'+
+    'gl_FragColor = vec4(c, 1.0);\n#include <colorspace_fragment>\n}' });
+const skyDome = new THREE.Mesh(skyGeo, skyMat); skyDome.renderOrder = -2; skyDome.frustumCulled = false;
 scene.add(skyDome);
-function tintSky(hex){ skyMat.color.set(hex); }
+function tintSky(hex){ /* v16: kept for callers; gradient is set by applyTheme -> setSkyTheme */ }
+function setSkyTheme(key, th){ const g = SKY_GRAD[key] || SKY_GRAD.desert; const U = skyMat.uniforms;
+  U.top.value.set(g[0]); U.hor.value.set(g[1]); U.low.value.set(th.ground); U.sunCol.value.set(th.dir);
+  U.sunK.value = (key==='cyber') ? 0.35 : (key==='volcano' ? 0.7 : 1.0);
+  scene.background = new THREE.Color(g[1]); if(scene.fog) scene.fog.color.set(g[1]); setCloudTheme(key); }
+// v16 VISUAL: drifting low-poly cloud puffs behind the track (one InstancedMesh = 1 draw call, parallax with the camera)
+const CLOUD_N = 14, PUFFS = 4, CLOUD_SPAN = 360;
+const cloudMat = new THREE.MeshLambertMaterial({ color:0xffffff, emissive:0x8a95a8, emissiveIntensity:0.55, flatShading:true, fog:false });
+const clouds = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), cloudMat, CLOUD_N*PUFFS);
+clouds.frustumCulled = false; clouds.renderOrder = -1; scene.add(clouds);
+const _cl = []; { let sd = 7; const rnd=()=>{ sd=(sd*16807)%2147483647; return sd/2147483647; };
+  for(let i=0;i<CLOUD_N;i++){ const c={ x:rnd()*CLOUD_SPAN, y:48+rnd()*42, z:-200-rnd()*25, s:3.6+rnd()*3.4, v:0.6+rnd()*1.4, puffs:[] };
+    for(let j=0;j<PUFFS;j++) c.puffs.push([ (j-1.5)*1.15 + (rnd()-0.5)*0.6, (j===1||j===2)?0.45+rnd()*0.35:rnd()*0.2, (rnd()-0.5)*0.6, 0.75+rnd()*0.55 ]);
+    _cl.push(c); } }
+const _clM = new THREE.Matrix4(), _clQ = new THREE.Quaternion(), _clP = new THREE.Vector3(), _clS = new THREE.Vector3();
+const CLOUD_THEME = { desert:[0xffffff,0xf0dcc4,0.85], beach:[0xffffff,0xd8ecf8,0.85], industrial:[0xd8dce4,0x8890a0,0.7], cyber:[0x3a2a78,0x6040c0,0.6],
+  candy:[0xffffff,0xf4c8e4,0.85], ice:[0xffffff,0xd8eaf8,0.85], volcano:[0x5a4440,0x802818,0.5], paradise:[0xffffff,0xd0f0f0,0.85] };
+function setCloudTheme(key){ const c = CLOUD_THEME[key] || CLOUD_THEME.desert; cloudMat.color.set(c[0]); cloudMat.emissive.set(c[1]); cloudMat.emissiveIntensity = c[2]; }
+let _clT = 0;
+function updateSky(dt){
+  skyDome.position.copy(camera.position);
+  _clT += dt; const cx = camera.position.x, cy = camera.position.y; let k = 0;
+  for(let i=0;i<CLOUD_N;i++){ const c=_cl[i];
+    let x = (c.x + _clT*c.v - cx*0.35) % CLOUD_SPAN; if(x<0) x += CLOUD_SPAN; x += cx - CLOUD_SPAN/2;
+    for(let j=0;j<PUFFS;j++){ const p=c.puffs[j]; const r=c.s*p[3];
+      _clP.set(x + p[0]*c.s, cy*0.6 + c.y + p[1]*c.s, camera.position.z + c.z + p[2]*c.s); _clS.set(r*1.25, r*0.8, r);
+      _clM.compose(_clP, _clQ, _clS); clouds.setMatrixAt(k++, _clM); } }
+  clouds.instanceMatrix.needsUpdate = true;
+}
 let trackGroup = new THREE.Group();
 let decorGroup = new THREE.Group();
 let pickupGroup = new THREE.Group();
@@ -1545,7 +1585,7 @@ function applyTheme(key){
   const th = THEMES[key] || THEMES.desert;
   scene.background = new THREE.Color(th.sky);
   scene.fog = new THREE.Fog(th.fog, 50, 280);
-  if(typeof tintSky==='function') tintSky(th.sky);
+  setSkyTheme(key, th); // v16: gradient sky + matching fog + cloud tint
   const LT = WORLD_LIGHT[key] || WORLD_LIGHT.desert; // v15: per-world light mood (intensity + fog depth)
   scene.fog.near = LT.fn*LITE.fogK; scene.fog.far = LT.ff*LITE.fogK; state.fogBase = [LT.fn, LT.ff];
   amb.color.set(th.amb); amb.intensity = LT.amb;
@@ -1572,7 +1612,7 @@ function startLevel(idx, endless=false, fromCheckpoint=false){
     state.mult=1; state.combo=0; state.comboTimer=0;
     state.fuel=Math.max(keepCp.fuelFloor||0.45, state.fuel||0.45);
   }
-  state.shake=0; state.fovPunch=0; state.squash=0; state.cine=null; state.slowmo=0; state.cineCount=0;
+  state.shake=0; state.fovPunch=0; state.squash=0; state.cine=null; state.finale=null; finaleCard=null; state.slowmo=0; state.cineCount=0;
   susp.cF=susp.cR=SUSP.sag; susp.vF=susp.vR=0; susp.hF=susp.hR=0; susp.peak=0; susp.kicks=0;
   state.grade='☆☆☆'; state.starGrade=0; state.chunks=[];
   particles.clear();
@@ -1826,6 +1866,7 @@ function failRun(reason){
 function winRun(){
   state.mode='grade';
   audio.win(); haptic(20);
+  startFinale(); // v16: cinematic finish (orbit cam + fireworks) before the grade card
   const starGrade = computeStarGrade();
   state.starGrade = starGrade;
   state.grade = starString(starGrade);
@@ -1845,6 +1886,7 @@ function winRun(){
   const timeTxt = state.endless ? '' : (ghost.newBest ? (ghost.bestT!=null ? ' · ⏱ NEW BEST TIME '+ghost.t.toFixed(1)+'s! (was '+ghost.bestT.toFixed(1)+'s)' : ' · ⏱ '+ghost.t.toFixed(1)+'s — your ghost will race you next time') : (ghost.recValid && ghost.bestT!=null ? ' · ⏱ '+ghost.t.toFixed(1)+'s (best '+ghost.bestT.toFixed(1)+'s — beat your ghost!)' : ''));
   const next = state.levelIndex+1;
   const hasNext = !state.endless && next < LEVELS.length;
+  finaleCard = ()=>{
   document.getElementById('card').innerHTML='<h1>'+(state.endless?'Distance!':LEVELS[state.levelIndex].name)+'</h1>'+
     '<div class="gradeHero">'+state.grade+'</div>'+
     '<p class="sub">Score '+state.score.toLocaleString()+' · Stars '+state.starsGot+'/'+state.starsTotal+
@@ -1859,7 +1901,36 @@ function winRun(){
   if(hasNext) document.getElementById('btnNext').onclick=()=>{ audio.ui(); startLevel(next); };
   document.getElementById('btnAgain').onclick=()=>{ audio.ui(); startLevel(state.levelIndex, state.endless); };
   document.getElementById('btnMenu').onclick=()=>{ audio.ui(); showTitle(); };
+  };
+  if(!state.finale) { const f=finaleCard; finaleCard=null; f(); }
 }
+/* v16 FINISH CELEBRATION (Stunt Paradise finish feel): camera swings round the car, 3 firework bursts over the
+   finish gate, a FINISH! call-out, then the grade card. Tap / any key skips straight to the card. */
+let finaleCard = null;
+const FW_COLS=[[1,0.35,0.25],[1,0.85,0.2],[0.35,0.9,1],[0.5,1,0.45],[1,0.5,0.95],[1,1,1]];
+function startFinale(){
+  if(new URLSearchParams(location.search).has('nofinale')) { state.finale=null; return; }
+  const p = car.pos; const s0 = camState.pos.clone().sub(p);
+  state.finale = { t:0, dur:1.9, bursts:0, a0:Math.atan2(s0.x, s0.z), r0:Math.max(8, Math.hypot(s0.x, s0.z)), y0:s0.y, px:p.x, py:p.y, pz:p.z };
+  state.finaleCount = (state.finaleCount||0) + 1;
+  popup('FINISH!', 'checkpoint'); state.fovPunch = Math.min(1, state.fovPunch + 0.4);
+}
+function fireworkBurst(x, y, z, ci){
+  const c = FW_COLS[ci % FW_COLS.length], c2 = FW_COLS[(ci+2) % FW_COLS.length];
+  for(let i=0;i<46;i++){ const u=Math.random()*2-1, a=Math.random()*Math.PI*2, r=Math.sqrt(1-u*u), v=9+Math.random()*5, cc=(i&1)?c:c2;
+    spawnParticle(x, y, z, Math.cos(a)*r*v, u*v+2, Math.sin(a)*r*v*0.6, 0.8+Math.random()*0.6, cc[0], cc[1], cc[2]); }
+  audio.firework(); haptic(12);
+}
+function skipFinale(){ if(!state.finale) return; state.finale = null; if(finaleCard){ const f=finaleCard; finaleCard=null; f(); } }
+function updateFinale(dt){
+  const F = state.finale; if(!F) return;
+  if(state.mode!=='grade'){ state.finale=null; finaleCard=null; return; }
+  F.t += dt;
+  const times=[0.15, 0.6, 1.05];
+  while(F.bursts < times.length && F.t >= times[F.bursts]){ const i=F.bursts++; fireworkBurst(F.px + 2 + i*3.5 - (i===1?7:0), F.py + 9 + i*2, F.pz - 2 - (i%2)*3, i*2+1); }
+  if(F.t >= F.dur) skipFinale();
+}
+['pointerdown','keydown'].forEach(ev=>window.addEventListener(ev, (e)=>{ if(e && e.repeat) return; if(state.finale && state.finale.t > 0.25) skipFinale(); }, true));
 
 /* Physics */
 const GRAV = 40; // v9: weightier arcs (was 28 = moon float)
@@ -2477,6 +2548,11 @@ function updateCamera(dt){
   camState.look.x += (_cv.lt.x - camState.look.x) * damp(8, dt);
   camState.look.y += (_cv.lt.y - camState.look.y) * damp(car.grounded?5:3.5, dt);
   camState.look.z += (_cv.lt.z - camState.look.z) * damp(3, dt);
+  if(state.finale && state.mode==='grade'){ // v16: finish orbit — eased half-swing round the car, slowly rising and closing in
+    const F=state.finale, u=Math.min(1, F.t/F.dur), e=u*u*(3-2*u), a=F.a0 + e*0.95, r=F.r0 + (11-F.r0)*e;
+    _cv.tp.set(F.px + Math.sin(a)*r, F.py + F.y0 + 2.5*e, F.pz + Math.cos(a)*r); _cv.lt.set(F.px, F.py + 1.2, F.pz);
+    const k = damp(5, dt) * Math.min(1, F.t/0.5); camState.pos.lerp(_cv.tp, k); camState.look.lerp(_cv.lt, k); // ramp in so the swing never snaps
+  }
   _cv.t += dt;
   const sh = Math.min(car.grounded?0.3:0.12, state.shake||0); // capped, smooth sine shake
   camera.position.copy(camState.pos);
@@ -2538,7 +2614,7 @@ function frame(now){
   for(const n of carVisual.nozzles){
     n.material.emissiveIntensity = (input.thrust && state.fuel>0 && state.mode==='play') ? 1.2 : 0.25;
   }
-  updateContactShadow();
+  updateContactShadow(); updateSky(raw); updateFinale(raw);
   if(!document.hidden){ renderer.render(scene, camera); perfTick(now); } // v15: no GPU work while backgrounded
   requestAnimationFrame(frame);
 }
@@ -2596,7 +2672,9 @@ requestAnimationFrame(frame);
 
 // Expose for smoke tests
 window.__RSP = {
-  version:15, audio, failRun, _sample:sampleSegment, _renderer:renderer, _scene:scene,
+  version:16, audio,
+  finale:()=>({active:!!state.finale, t:state.finale?+state.finale.t.toFixed(2):0, bursts:state.finale?state.finale.bursts:0, count:state.finaleCount||0, cardShown:!document.getElementById('overlay').classList.contains('hidden')}),
+  sky:()=>{ const U=skyMat.uniforms; return {top:U.top.value.getHexString(), hor:U.hor.value.getHexString(), fog:scene.fog?scene.fog.color.getHexString():null, clouds:clouds.count, cloudVis:clouds.visible, domeAtCam:skyDome.position.distanceTo(camera.position)<0.01}; }, failRun, _sample:sampleSegment, _renderer:renderer, _scene:scene,
   bridge:()=>{ const b=state.level&&state.level._bridge; return b?{n:b.planks.length, x0:+b.x0.toFixed(1), x1:+b.x1.toFixed(1), fallen:b.fallen, cleared:b.cleared, runs:state.bridgeRuns||0}:null; },
   gLean:()=>+(state.gLean||0).toFixed(3),
   gate:()=>{ const G=state.level&&state.level._gate; return G?{bx:+G.bx.toFixed(1), gx:+G.gx.toFixed(1), pressed:G.pressed, bonus:G.bonus, open:+G.open.toFixed(2), opened:G.opened, n:state.gatesOpened||0}:null; },
