@@ -460,7 +460,7 @@ function addSetPieces(){ // v9: research set pieces — kid-safe bounce pad + po
   LEVELS[6].lava=3;
   LEVELS[1].popRamp=true; LEVELS[3].popRamp=true; // v20: L8 ramp removed: at full gas the car flies over every flat run there, so it could never be caught (0 hits in v19 and v20 drives). v19: hydraulic pop-up ramp (moving track piece). L5/L7: no flat run far enough from a loop/steep section
   LEVELS[0].kicker=true; LEVELS[2].kicker=true; LEVELS[5].kicker=true; // v18: sliding kicker ramp (research: moving ramps / moving track pieces)
-  LEVELS[6].seesaw=true; LEVELS[6].seesawAt=197; // v21: rocking see-saw ramp (moving track piece) on flats the car actually drives on at full gas (L3's flats are jumped over, L5 has none)
+  LEVELS[6].seesaw=true; LEVELS[6].seesawAt=197; LEVELS[1].seesaw=true; LEVELS[5].seesaw=true; LEVELS[5].seesawAt=68; // v22: see-saw also on L2 (auto-placed) and L6 (pinned to the x≈57–76 ledge; the auto spot sat on the finish straight, so it froze mid-bounce under the results screen). Both hit in headless full-gas drives. // v21: rocking see-saw ramp (moving track piece) on flats the car actually drives on at full gas (L3's flats are jumped over, L5 has none)
   LEVELS[1].dolphins=true; LEVELS[7].dolphins=true; // v17: dolphin leap set piece over the sea (research: slow-mo animal jumps; kid-safe dolphins, not sharks)
 }
 (function buildLevels(){
@@ -1667,7 +1667,7 @@ function popRampHit(fr, air){ // grounded physics step (or a low airborne skim o
    slaps down onto the road so you drive straight on), it catapults you skyward, then it slams back with a dust puff and
    bounces to rest. Missing it is never a crash. Two meshes (plank + fulcrum), built once per level, no per-frame allocations. */
 const sawMat = new THREE.MeshStandardMaterial({ color:0xffffff, vertexColors:true, emissive:0xff7a1a, emissiveIntensity:0.2, roughness:0.5, flatShading:true });
-const sawStripMat = new THREE.MeshBasicMaterial({ color:0x5fe8ff, fog:false });
+const sawStripMat = new THREE.MeshBasicMaterial({ color:0xffffff, vertexColors:true, fog:false }); // v22: unlit hazard blocks + chevrons + cyan strip share this (stripes stay true yellow/blue under lava light)
 const SAW_HALF = 3.6, SAW_PIV = 0.82, SAW_MAX = 0.23;
 function buildSeesaw(level, framesData){
   level._saw = null; if(!level.seesaw) return;
@@ -1681,13 +1681,14 @@ function buildSeesaw(level, framesData){
   // side-view game: the plank's flank is what you see, so it's a chunky 0.42 m beam with bold yellow/blue hazard blocks,
   // a white chevron row on top, an orange lip, and a big orange A-frame fulcrum with a white axle hub.
   const P = [], plank = new THREE.BoxGeometry(SAW_HALF*2, 0.36, W); plank.translate(0, -0.02, 0); P.push(_dolPart(plank, dk));
-  for(let i=0;i<8;i++){ const st = new THREE.BoxGeometry(SAW_HALF*2/8 - 0.1, 0.42, W*1.03); st.translate(-SAW_HALF + (i+0.5)*SAW_HALF*2/8, 0, 0); P.push(_dolPart(st, i%2 ? blu : yel)); }
-  for(let i=0;i<4;i++){ for(const sg of [1,-1]){ const ch = new THREE.BoxGeometry(0.2, 0.08, W*0.5); ch.rotateY(0.6*sg); ch.translate(SAW_HALF - 0.7 - i*0.6, 0.24, -W*0.14*sg); P.push(_dolPart(ch, wht)); } }
+  const LS = []; // v22 visual: hazard blocks and chevrons moved to the unlit strip material so the lava's orange light can't wash them out
+  for(let i=0;i<8;i++){ const st = new THREE.BoxGeometry(SAW_HALF*2/8 - 0.1, 0.42, W*1.03); st.translate(-SAW_HALF + (i+0.5)*SAW_HALF*2/8, 0, 0); LS.push(_dolPart(st, i%2 ? blu : yel)); }
+  for(let i=0;i<4;i++){ for(const sg of [1,-1]){ const ch = new THREE.BoxGeometry(0.2, 0.08, W*0.5); ch.rotateY(0.6*sg); ch.translate(SAW_HALF - 0.7 - i*0.6, 0.24, -W*0.14*sg); LS.push(_dolPart(ch, wht)); } }
   const lip = new THREE.BoxGeometry(0.24, 0.6, W*1.05); lip.translate(SAW_HALF - 0.12, 0.08, 0); P.push(_dolPart(lip, org));
   const pv = new THREE.Mesh(mergeGeometries(P), sawMat);
   // v21 polish: a bright cyan light strip runs along both flanks of the plank so it reads clearly against the orange lava
   // (lit stripes alone washed out to orange when the plank glowed). Unlit, merged, 1 extra draw call; it flares as the plank tips.
-  const LS = []; for(const z of [-W*0.53, W*0.53]){ const sb = new THREE.BoxGeometry(SAW_HALF*2 - 0.3, 0.09, 0.05); sb.translate(0, 0.25, z); LS.push(sb); for(let i=0;i<7;i++){ const bulb = new THREE.BoxGeometry(0.16, 0.16, 0.07); bulb.translate(-SAW_HALF + 0.55 + i*(SAW_HALF*2 - 1.1)/6, 0.25, z); LS.push(bulb); } }
+  const cy = new THREE.Color(0x5fe8ff); for(const z of [-W*0.53, W*0.53]){ const sb = new THREE.BoxGeometry(SAW_HALF*2 - 0.3, 0.09, 0.05); sb.translate(0, 0.25, z); LS.push(_dolPart(sb, cy)); for(let i=0;i<7;i++){ const bulb = new THREE.BoxGeometry(0.16, 0.16, 0.07); bulb.translate(-SAW_HALF + 0.55 + i*(SAW_HALF*2 - 1.1)/6, 0.25, z); LS.push(_dolPart(bulb, cy)); } }
   const strip = new THREE.Mesh(mergeGeometries(LS), sawStripMat); pv.add(strip);
   const B = []; for(const z of [-W*0.36, W*0.36]){ const leg = new THREE.CylinderGeometry(0.12, 1.1, SAW_PIV, 3); leg.rotateY(Math.PI/6); leg.scale(1, 1, 0.35); leg.translate(0, SAW_PIV/2 - 0.1, z); B.push(_dolPart(leg, org)); }
   const axle = new THREE.CylinderGeometry(0.2, 0.2, W*1.1, 12); axle.rotateX(Math.PI/2); axle.translate(0, SAW_PIV - 0.1, 0); B.push(_dolPart(axle, wht));
@@ -1711,7 +1712,7 @@ function updateSeesaw(dt){
   if(S.ang > SAW_MAX) { S.ang = SAW_MAX; if(S.av > 0) S.av = 0; } if(S.ang < -SAW_MAX) { S.ang = -SAW_MAX; if(S.av < 0) S.av = -S.av*0.35; }
   S.pv.rotation.z = S.ang; S.tip = Math.max(0, S.ang/SAW_MAX);
   sawMat.emissiveIntensity = 0.2 + 0.45*S.tip*S.tip; // v21 polish: softer glow keeps the yellow/blue hazard blocks readable
-  const sk = 0.75 + 0.6*S.tip; sawStripMat.color.setRGB(0.37*sk, 0.91*sk, sk);
+  const sk = 0.92 + 0.3*S.tip; sawStripMat.color.setRGB(sk, sk, sk); // v22: brightness-only flare (material tint would recolour the hazard blocks)
 }
 function seesawHit(fr){ // grounded physics step; true if the car was launched
   const S = state.level && state.level._saw; if(!S || S.cool > 0 || car.speed < 4) return false;
@@ -2999,7 +3000,7 @@ requestAnimationFrame(frame);
 
 // Expose for smoke tests
 window.__RSP = {
-  version:21, seesaw:()=>{ const S=state.level&&state.level._saw; return S?{x:+S.x.toFixed(1), y:S.y, ang:+S.ang.toFixed(3), state:S.state, hits:S.hits, slams:S.slams, n:state.seesaws||0, carX:car.pos.x, air:!car.grounded, ei:+sawMat.emissiveIntensity.toFixed(2)}:null; }, _flatRuns:(mn)=>flatRuns(state.level,state.framesData,mn).map(r=>[+r.a.pos.x.toFixed(1),+r.b.pos.x.toFixed(1),+r.a.pos.y.toFixed(1)]), _steep:()=>{ const o=[]; for(const sg of state.framesData.segs) for(const f of sg.frames) if(f.normal.y<0.5) o.push(Math.round(f.pos.x)); return [...new Set(o)]; }, popRamp:()=>{ const Q=state.level&&state.level._pop; return Q?{x:Q.x, y:Q.y, h:+Q.h.toFixed(3), t:Q.t, hits:Q.hits, maxPops:Q.maxPops, rolls:Q.rolls, pops:state.pops||0, carX:car.pos.x, air:!car.grounded, scaleY:Q.m.scale.y}:null; }, setPopPhase:(t)=>{ const Q=state.level&&state.level._pop; if(Q){ Q.t=t; Q.cool=0; Q.aH=0; } }, popAssistInfo:()=>{ const Q=state.level&&state.level._pop; return Q?{assist:Q.assist, aH:+Q.aH.toFixed(3), holds:Q.holds, h:+Q.h.toFixed(3)}:null; }, trail:()=>trailInfo(), popHeight,
+  version:22, sawStripeColor:()=>{ const S=state.level&&state.level._saw; if(!S) return null; const st=S.pv.children[0]; return {unlit:st.material.type, blocks:st.geometry.attributes.position.count}; }, seesaw:()=>{ const S=state.level&&state.level._saw; return S?{x:+S.x.toFixed(1), y:S.y, ang:+S.ang.toFixed(3), state:S.state, hits:S.hits, slams:S.slams, n:state.seesaws||0, carX:car.pos.x, air:!car.grounded, ei:+sawMat.emissiveIntensity.toFixed(2)}:null; }, _flatRuns:(mn)=>flatRuns(state.level,state.framesData,mn).map(r=>[+r.a.pos.x.toFixed(1),+r.b.pos.x.toFixed(1),+r.a.pos.y.toFixed(1)]), _steep:()=>{ const o=[]; for(const sg of state.framesData.segs) for(const f of sg.frames) if(f.normal.y<0.5) o.push(Math.round(f.pos.x)); return [...new Set(o)]; }, popRamp:()=>{ const Q=state.level&&state.level._pop; return Q?{x:Q.x, y:Q.y, h:+Q.h.toFixed(3), t:Q.t, hits:Q.hits, maxPops:Q.maxPops, rolls:Q.rolls, pops:state.pops||0, carX:car.pos.x, air:!car.grounded, scaleY:Q.m.scale.y}:null; }, setPopPhase:(t)=>{ const Q=state.level&&state.level._pop; if(Q){ Q.t=t; Q.cool=0; Q.aH=0; } }, popAssistInfo:()=>{ const Q=state.level&&state.level._pop; return Q?{assist:Q.assist, aH:+Q.aH.toFixed(3), holds:Q.holds, h:+Q.h.toFixed(3)}:null; }, trail:()=>trailInfo(), popHeight,
   hud:()=>{ const r=id=>{ const e=document.getElementById(id); if(!e||getComputedStyle(e).display==='none') return null; const b=e.getBoundingClientRect(); return {x:b.left,y:b.top,w:b.width,h:b.height}; }; return {score:r('scorePanel'), mult:r('multPanel'), grade:r('gradePanel'), tilt:r('tiltToggle'), music:r('musicBtn'), pause:r('pauseBtn'), fuel:r('fuelWrap'), combo:r('combo'), starHud:r('starHud'), comboShown:comboEl.classList.contains('show'), fuelCls:fuelWrapEl.className}; },
   forceCombo:(n)=>{ state.combo=n; state.mult=n; state.comboTimer=3; punchCombo(); updateHUD(); }, prewarms:()=>_prewarmN, programs:()=>renderer.info.programs.length, pTex:()=>!!pMat.map, staticFrozen:()=>{ let n=0,f=0; for(const G of [trackGroup,decorGroup]) G.traverse(o=>{ if(o!==G){ n++; if(!o.matrixAutoUpdate) f++; } }); return {n,f}; },
   kicker:()=>{ const K=state.level&&state.level._kick; return K?{x:K.x, cx:K.cx, amp:K.amp, hits:K.hits, kicks:state.kicks||0, carX:car.pos.x, air:!car.grounded}:null; }, seaFx:()=>({fog:seaMat.fog, ei:seaMat.emissiveIntensity, embers:seaState.embers||0, caps:seaState.caps||0}), calls:()=>renderer.info.render.calls,
