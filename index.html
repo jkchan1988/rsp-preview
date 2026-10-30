@@ -458,7 +458,7 @@ function addSetPieces(){ // v9: research set pieces — kid-safe bounce pad + po
   // v14 SWITCH GATES (research: "buttons that lower ramps", switch puzzles) and kid-safe LAVA BLOBS (research: lava bombs)
   LEVELS[1].gate=true; LEVELS[3].gate=true; LEVELS[5].gate=true; LEVELS[7].gate=90; // the L8 finale's long flat is jumped over, so pin the gate to the pre-loop straight
   LEVELS[6].lava=3;
-  LEVELS[1].popRamp=true; LEVELS[3].popRamp=true; LEVELS[7].popRamp=true; // v19: hydraulic pop-up ramp (moving track piece). L5/L7: no flat run far enough from a loop/steep section
+  LEVELS[1].popRamp=true; LEVELS[3].popRamp=true; // v20: L8 ramp removed: at full gas the car flies over every flat run there, so it could never be caught (0 hits in v19 and v20 drives). v19: hydraulic pop-up ramp (moving track piece). L5/L7: no flat run far enough from a loop/steep section
   LEVELS[0].kicker=true; LEVELS[2].kicker=true; LEVELS[5].kicker=true; // v18: sliding kicker ramp (research: moving ramps / moving track pieces)
   LEVELS[1].dolphins=true; LEVELS[7].dolphins=true; // v17: dolphin leap set piece over the sea (research: slow-mo animal jumps; kid-safe dolphins, not sharks)
 }
@@ -768,10 +768,10 @@ const pGeo = new THREE.BufferGeometry();
 pGeo.setAttribute('position', new THREE.BufferAttribute(pPos,3));
 pGeo.setAttribute('color', new THREE.BufferAttribute(pCol,3));
 // v19 VISUAL: soft round glow sprite (was hard square points) — sparks, embers and sea sparkle read as light, not confetti squares
-const _pTexCv=document.createElement('canvas'); _pTexCv.width=_pTexCv.height=64;
-{ const x=_pTexCv.getContext('2d'), g=x.createRadialGradient(32,32,0,32,32,32); g.addColorStop(0,'rgba(255,255,255,1)'); g.addColorStop(0.22,'rgba(255,255,255,0.95)'); g.addColorStop(0.5,'rgba(255,255,255,0.38)'); g.addColorStop(1,'rgba(255,255,255,0)'); x.fillStyle=g; x.fillRect(0,0,64,64); }
+const _pTexCv=document.createElement('canvas'); _pTexCv.width=_pTexCv.height=32; // v20 TECH: 32px sprite (was 64) = 4x less texture sampling bandwidth
+{ const x=_pTexCv.getContext('2d'), g=x.createRadialGradient(16,16,0,16,16,16); g.addColorStop(0,'rgba(255,255,255,1)'); g.addColorStop(0.25,'rgba(255,255,255,0.9)'); g.addColorStop(0.55,'rgba(255,255,255,0.3)'); g.addColorStop(1,'rgba(255,255,255,0)'); x.fillStyle=g; x.fillRect(0,0,32,32); }
 const pTex=new THREE.CanvasTexture(_pTexCv);
-const pMat = new THREE.PointsMaterial({ size:1.45, map:pTex, vertexColors:true, transparent:true, opacity:1, depthWrite:false, blending:THREE.AdditiveBlending, sizeAttenuation:true });
+const pMat = new THREE.PointsMaterial({ size:1.2, map:pTex, vertexColors:true, transparent:true, opacity:1, depthWrite:false, blending:THREE.AdditiveBlending, sizeAttenuation:true });
 const pPoints = new THREE.Points(pGeo, pMat);
 scene.add(pPoints);
 // v10: fixed object pool + ring cursor — zero allocations, no shift()/splice() churn
@@ -806,6 +806,50 @@ function updateParticles(dt){
   pGeo.attributes.color.needsUpdate=true;
   if(alive===0) _pLive=0;
 }
+
+/* v20 VISUAL: tail-light speed trails. Two glowing ribbons stream from the rear corners when you're fast, airborne or
+   on ROCKET (gold in ROCKET, cool cyan otherwise), so flips and big air draw a light arc across the sky like the real game's
+   stunt streaks. Ribbons follow the car's own up vector, so they hug loops too. One geometry, one draw call, no allocations. */
+const TR_N = 26, TR_V = TR_N*2;
+const trGeo = new THREE.BufferGeometry();
+const trPos = new Float32Array(2*TR_V*3), trCol = new Float32Array(2*TR_V*3);
+trGeo.setAttribute('position', new THREE.BufferAttribute(trPos,3)); trGeo.setAttribute('color', new THREE.BufferAttribute(trCol,3));
+{ const idx=[]; for(let r=0;r<2;r++){ const o=r*TR_V; for(let i=0;i<TR_N-1;i++){ const a=o+i*2, b=a+1, c=a+2, d=a+3; idx.push(a,b,c, b,d,c); } } trGeo.setIndex(idx); }
+const trMat = new THREE.MeshBasicMaterial({ vertexColors:true, transparent:true, depthWrite:false, blending:THREE.AdditiveBlending, side:THREE.DoubleSide, forceSinglePass:true, fog:false }); // single pass: three.js otherwise re-flags a transparent double-sided material twice a frame (shader churn)
+const trMesh = new THREE.Mesh(trGeo, trMat); trMesh.frustumCulled = false; trMesh.visible = false; trMesh.userData.dynamic = true; scene.add(trMesh);
+const trHist = [new Float32Array(TR_N*3), new Float32Array(TR_N*3)], trUp = new Float32Array(TR_N*3);
+let trHead = 0, trK = 0, trReset = true, trMax = 0;
+const _trV = new THREE.Vector3(), _trU = new THREE.Vector3(), _trLast = new THREE.Vector3(), _trCol = new THREE.Color();
+const TR_LOCAL = [[-2.55, 0.62, 0.72], [-2.55, 0.62, -0.72]];
+function updateTrail(dt){
+  const G = carVisual.group, active = state.mode==='play' || state.mode==='pause' || state.mode==='grade';
+  if(!active){ trMesh.visible = false; trK = 0; trReset = true; return; }
+  if(state.mode==='pause') return; // freeze while paused
+  const rocket = !!(input.thrust && state.fuel>0), want = (rocket || !car.grounded || car.speed > 15) ? 1 : 0;
+  trK += (want - trK) * Math.min(1, dt * (want ? 6 : 2.5));
+  if(_trLast.distanceToSquared(G.position) > 36) trReset = true; // respawn / checkpoint jump: don't draw a streak across the map
+  _trLast.copy(G.position);
+  G.updateMatrixWorld();
+  _trU.set(0,1,0).applyQuaternion(G.quaternion);
+  if(trReset){ for(let r=0;r<2;r++){ _trV.set(...TR_LOCAL[r]); G.localToWorld(_trV); for(let i=0;i<TR_N;i++){ trHist[r][i*3]=_trV.x; trHist[r][i*3+1]=_trV.y; trHist[r][i*3+2]=_trV.z; trUp[i*3]=_trU.x; trUp[i*3+1]=_trU.y; trUp[i*3+2]=_trU.z; } } trReset = false; }
+  trHead = (trHead + 1) % TR_N;
+  for(let r=0;r<2;r++){ _trV.set(...TR_LOCAL[r]); G.localToWorld(_trV); trHist[r][trHead*3]=_trV.x; trHist[r][trHead*3+1]=_trV.y; trHist[r][trHead*3+2]=_trV.z; }
+  trUp[trHead*3]=_trU.x; trUp[trHead*3+1]=_trU.y; trUp[trHead*3+2]=_trU.z;
+  if(trK < 0.02){ trMesh.visible = false; return; }
+  trMesh.visible = true;
+  _trCol.setHex(rocket ? 0xffb040 : 0x60d8ff);
+  for(let r=0;r<2;r++){ const H = trHist[r], o = r*TR_V*3;
+    for(let i=0;i<TR_N;i++){ // i=0 newest
+      const j = ((trHead - i) % TR_N + TR_N) % TR_N, u = i/(TR_N-1), w = 0.2*(1-u)+0.02, a = trK*(1-u)*(1-u)*0.9;
+      const ux=trUp[j*3], uy=trUp[j*3+1], uz=trUp[j*3+2], k=o+i*6;
+      trPos[k]=H[j*3]+ux*w; trPos[k+1]=H[j*3+1]+uy*w; trPos[k+2]=H[j*3+2]+uz*w;
+      trPos[k+3]=H[j*3]-ux*w; trPos[k+4]=H[j*3+1]-uy*w; trPos[k+5]=H[j*3+2]-uz*w;
+      const cr=_trCol.r*a, cg=_trCol.g*a, cb=_trCol.b*a; trCol[k]=cr; trCol[k+1]=cg; trCol[k+2]=cb; trCol[k+3]=cr; trCol[k+4]=cg; trCol[k+5]=cb;
+    } }
+  trGeo.attributes.position.needsUpdate = true; trGeo.attributes.color.needsUpdate = true;
+  if(trK > trMax) trMax = trK;
+}
+function trailInfo(){ let len=0; const H=trHist[0]; for(let i=1;i<TR_N;i++){ const a=((trHead-i+1)%TR_N+TR_N)%TR_N, b=((trHead-i)%TR_N+TR_N)%TR_N; len+=Math.hypot(H[a*3]-H[b*3],H[a*3+1]-H[b*3+1],H[a*3+2]-H[b*3+2]); } return { visible:trMesh.visible, k:+trK.toFixed(3), maxK:+trMax.toFixed(3), len:+len.toFixed(2), n:TR_N, color:trMesh.visible?_trCol.getHexString():null }; }
 
 /* Track sampling — multi-segment with Frenet frames */
 function buildSegment(waypoints){
@@ -1574,12 +1618,18 @@ function buildPopRamp(level, framesData){
   const plate = new THREE.BoxGeometry(3.6, 0.06, W*1.05); plate.translate(0,0.03,0); P.push(_dolPart(plate, dk));
   const m = new THREE.Mesh(mergeGeometries(P), popMat.clone()); const f = nearestFrameToXY(framesData, cx, run.a.pos.y);
   m.position.set(cx, f.pos.y + 0.02, f.pos.z); m.scale.y = 0.1; pickupGroup.add(m);
-  level._pop = { m, x:cx, y:f.pos.y, t:0, h:0.1, cool:0, hits:0, maxPops:0, rolls:0 };
+  level._pop = { m, x:cx, y:f.pos.y, t:0, h:0.1, cool:0, hits:0, maxPops:0, rolls:0, aH:0, assist: level===LEVELS[1], holds:0 }; // v20: L2 (first ramp level) rises to meet you
 }
 function popHeight(t){ const u = 0.5 + 0.5*Math.sin(t*1.9 - 1.2); const k = Math.min(1, Math.max(0, (u-0.15)/0.7)); return 0.1 + 0.9*k*k*(3-2*k); }
 function updatePopRamp(dt){
   const Q = state.level && state.level._pop; if(!Q) return;
-  Q.t += dt; if(Q.cool > 0) Q.cool -= dt; Q.h = popHeight(Q.t);
+  Q.t += dt; if(Q.cool > 0) Q.cool -= dt; const h0 = popHeight(Q.t);
+  // v20 KID ASSIST: once you're close (12 m) and driving, a ramp that is already half up stays up instead of sinking under you;
+  // on L8 Paradise (the finale) it rises to meet you. After you pass, it lets go and resumes its rhythm.
+  const dx = Q.x - car.pos.x;
+  if(state.mode==='play' && dx > 0 && dx < 12 && car.speed > 4){ if(Q.assist) Q.aH = Math.min(1, Math.max(Q.aH, h0) + dt*2.4); else if(h0 >= 0.45 && h0 > Q.aH) Q.aH = h0; if(Q.aH > h0 + 0.02 && !Q._held){ Q._held = true; Q.holds++; } }
+  else if(dx < -4 || dx > 14){ Q.aH = Math.max(0, Q.aH - dt*1.5); Q._held = false; }
+  Q.h = Math.max(h0, Q.aH);
   Q.m.scale.y = Q.h; Q.m.material.emissiveIntensity = 0.15 + 0.85*Q.h*Q.h;
 }
 const _popAirT = new THREE.Vector3(1,0,0), _popFr = { tangent:_popAirT };
@@ -1776,6 +1826,7 @@ function applyTheme(key){
 }
 
 function startLevel(idx, endless=false, fromCheckpoint=false){
+  trReset = true; trK = 0; // v20: no light-trail streak across the map on (re)spawn
   state.jumps = 0; if(typeof _cv!=="undefined") _cv.init=false;
   const keepCp = fromCheckpoint && state.lastCheckpoint && state.lastCheckpoint.levelIndex===idx && !endless
     ? Object.assign({}, state.lastCheckpoint) : null;
@@ -2807,7 +2858,7 @@ function frame(now){
     B.rotation.z = (susp.cR - susp.cF)/SUSP.wb + state.gLean;
     for(const h of carVisual.hubs){ h.hub.position.y = h.baseY + (h.front ? susp.hF : susp.hR); h.hub.rotation.z = -susp.spin; }
   } else { carVisual.body.position.y = SUSP.lift - SUSP.sag; carVisual.body.rotation.z = 0; for(const h of carVisual.hubs){ h.hub.position.y=h.baseY; } }
-  updateCoins(raw); if(state.mode==='play'){ updateFans(raw); updateTrain(raw); updateBridge(raw); updateGate(raw); updateLava(raw); updateDolphins(raw); updateKicker(raw); updatePopRamp(raw); } updateGhost();
+  updateCoins(raw); if(state.mode==='play'){ updateFans(raw); updateTrain(raw); updateBridge(raw); updateGate(raw); updateLava(raw); updateDolphins(raw); updateKicker(raw); updatePopRamp(raw); } updateGhost(); updateTrail(raw); // v20 light trails
   audio.engine(state.mode==='play' && !document.hidden, car.speed, !!input.gas, car.grounded, !!(input.thrust && state.fuel>0 && state.mode==='play'));
   for(const n of carVisual.nozzles){
     n.material.emissiveIntensity = (input.thrust && state.fuel>0 && state.mode==='play') ? 1.2 : 0.25;
@@ -2839,7 +2890,7 @@ let fpsEl=null; if(FPS_ON){ fpsEl=document.createElement('div'); fpsEl.style.css
 let _pfT=0, _pfN=0, _pfLast=0, _pfSlow=0, _pfLiteSlow=0, _pfHitch=0, _pfWorst=0;
 /* v15 LITE TIER: if the device is still slow at DPR 1, pull in the far plane + fog and halve particle spawns.
    Never touches physics, so play feels identical — just less far-away scenery. ?lite=1 forces it for testing. */
-function setLite(on){ if(LITE.on===on) return; LITE.on=on; LITE.fogK = on?0.7:1; LITE.pK = on?0.5:1;
+function setLite(on){ if(LITE.on===on) return; LITE.on=on; LITE.fogK = on?0.7:1; LITE.pK = on?0.5:1; pMat.size = on?0.95:1.2; // v20: lite tier also shrinks glow sprites (fill-rate)
   camera.far = on?300:600; camera.updateProjectionMatrix();
   if(scene.fog && state.fogBase){ scene.fog.near=state.fogBase[0]*LITE.fogK; scene.fog.far=state.fogBase[1]*LITE.fogK; } }
 if(/[?&]lite=1/.test(location.search)) setLite(true);
@@ -2870,7 +2921,7 @@ requestAnimationFrame(frame);
 
 // Expose for smoke tests
 window.__RSP = {
-  version:19, popRamp:()=>{ const Q=state.level&&state.level._pop; return Q?{x:Q.x, y:Q.y, h:+Q.h.toFixed(3), t:Q.t, hits:Q.hits, maxPops:Q.maxPops, rolls:Q.rolls, pops:state.pops||0, carX:car.pos.x, air:!car.grounded, scaleY:Q.m.scale.y}:null; }, setPopPhase:(t)=>{ const Q=state.level&&state.level._pop; if(Q){ Q.t=t; Q.cool=0; } }, popHeight,
+  version:20, popRamp:()=>{ const Q=state.level&&state.level._pop; return Q?{x:Q.x, y:Q.y, h:+Q.h.toFixed(3), t:Q.t, hits:Q.hits, maxPops:Q.maxPops, rolls:Q.rolls, pops:state.pops||0, carX:car.pos.x, air:!car.grounded, scaleY:Q.m.scale.y}:null; }, setPopPhase:(t)=>{ const Q=state.level&&state.level._pop; if(Q){ Q.t=t; Q.cool=0; Q.aH=0; } }, popAssistInfo:()=>{ const Q=state.level&&state.level._pop; return Q?{assist:Q.assist, aH:+Q.aH.toFixed(3), holds:Q.holds, h:+Q.h.toFixed(3)}:null; }, trail:()=>trailInfo(), popHeight,
   hud:()=>{ const r=id=>{ const e=document.getElementById(id); if(!e||getComputedStyle(e).display==='none') return null; const b=e.getBoundingClientRect(); return {x:b.left,y:b.top,w:b.width,h:b.height}; }; return {score:r('scorePanel'), mult:r('multPanel'), grade:r('gradePanel'), tilt:r('tiltToggle'), music:r('musicBtn'), pause:r('pauseBtn'), fuel:r('fuelWrap'), combo:r('combo'), starHud:r('starHud'), comboShown:comboEl.classList.contains('show'), fuelCls:fuelWrapEl.className}; },
   forceCombo:(n)=>{ state.combo=n; state.mult=n; state.comboTimer=3; punchCombo(); updateHUD(); }, prewarms:()=>_prewarmN, programs:()=>renderer.info.programs.length, pTex:()=>!!pMat.map, staticFrozen:()=>{ let n=0,f=0; for(const G of [trackGroup,decorGroup]) G.traverse(o=>{ if(o!==G){ n++; if(!o.matrixAutoUpdate) f++; } }); return {n,f}; },
   kicker:()=>{ const K=state.level&&state.level._kick; return K?{x:K.x, cx:K.cx, amp:K.amp, hits:K.hits, kicks:state.kicks||0, carX:car.pos.x, air:!car.grounded}:null; }, seaFx:()=>({fog:seaMat.fog, ei:seaMat.emissiveIntensity, embers:seaState.embers||0, caps:seaState.caps||0}), calls:()=>renderer.info.render.calls,
