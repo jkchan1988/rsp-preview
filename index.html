@@ -460,6 +460,7 @@ function addSetPieces(){ // v9: research set pieces — kid-safe bounce pad + po
   LEVELS[6].lava=3;
   LEVELS[1].popRamp=true; LEVELS[3].popRamp=true; // v20: L8 ramp removed: at full gas the car flies over every flat run there, so it could never be caught (0 hits in v19 and v20 drives). v19: hydraulic pop-up ramp (moving track piece). L5/L7: no flat run far enough from a loop/steep section
   LEVELS[0].kicker=true; LEVELS[2].kicker=true; LEVELS[5].kicker=true; // v18: sliding kicker ramp (research: moving ramps / moving track pieces)
+  LEVELS[7].hoops=[{x:308.3,y:17.8},{x:320.7,y:19.0},{x:333.0,y:17.2}]; LEVELS[7].hoopTheme='tropic'; // v24: HOOP CHAIN on the L8 Paradise finale's biggest full-gas jump (x 298→363, apex x≈318.4 y≈19.0 in a headless drive): three tropical hoops along the arc
   LEVELS[4].hoop={x:184.6, y:7.0}; // v23: candy hoop floats at the apex of L5 Candy Waves' big full-gas jump (x 167→205, apex x≈184.6 y≈7.0 in a headless drive); L5 has no flats, so its moving piece lives in the air
   LEVELS[6].seesaw=true; LEVELS[6].seesawAt=197; LEVELS[1].seesaw=true; LEVELS[5].seesaw=true; LEVELS[5].seesawAt=68; // v22: see-saw also on L2 (auto-placed) and L6 (pinned to the x≈57–76 ledge; the auto spot sat on the finish straight, so it froze mid-bounce under the results screen). Both hit in headless full-gas drives. // v21: rocking see-saw ramp (moving track piece) on flats the car actually drives on at full gas (L3's flats are jumped over, L5 has none)
   LEVELS[1].dolphins=true; LEVELS[7].dolphins=true; // v17: dolphin leap set piece over the sea (research: slow-mo animal jumps; kid-safe dolphins, not sharks)
@@ -1757,46 +1758,72 @@ function trainStep(dt){
   if(Math.abs(t.x - car.pos.x) < 9){ t.alongside += dt; if(!t.honked){ t.honked=true; audio.horn(); popup('RACE THE TRAIN!', 'pop'); } }
 }
 
-/* v23 CANDY HOOP (L5 Candy Waves' moving piece). L5 has no flat runs, so its moving piece floats in the air: a big
-   pink-and-white candy-striped hoop with a gold rim bobs up and down at the top of the level's big jump and spins like a
-   barber pole. Fly through it for CANDY HOOP! (+200, confetti ring, hoop flash). Kid assist: once you're airborne and
-   close, it drifts to meet your line, so Lincoln gets it on a plain full-gas run. Never blocks or crashes anything.
-   Two unlit meshes (stripes + rim) built once per level, no per-frame allocations. */
-const hoopMat = new THREE.MeshBasicMaterial({ color:0xffffff, vertexColors:true, fog:false });
+/* v23 CANDY HOOP (L5 Candy Waves' moving piece) + v24 HOOP CHAIN (L8 Paradise finale). Floating hoops bob and spin like
+   barber poles at the top of a big full-gas jump. Fly through one for +200 (confetti ring, hoop flash and swell). Kid
+   assist: once you're airborne and close, each hoop drifts to meet your line, so Lincoln gets them on a plain full-gas run.
+   v24: a level can hold a chain of hoops along one jump arc (L8: three tropical teal/coral hoops bobbing in a wave);
+   thread all of them in one flight for HOOP CHAIN! (+500, rainbow burst, short slow-mo). Never blocks or crashes anything.
+   One unlit merged mesh per hoop from a fixed pool of 3 materials (no per-level material leaks), no per-frame allocations. */
+const hoopMats = [0,1,2].map(()=>new THREE.MeshBasicMaterial({ color:0xffffff, vertexColors:true, fog:false }));
+const hoopMat = hoopMats[0];
 const HOOP_R = 2.3, HOOP_TUBE = 0.3;
+const HOOP_THEMES = {
+  candy:  { a:0xff4fa8, b:0xfff6fb, rim:0xffd040, inner:0x5ff0c8, gem:0xffd040, label:'CANDY HOOP!' },
+  tropic: { a:0x14c8c0, b:0xf4fffd, rim:0xffc23a, inner:0xff6f4f, gem:0xff6f4f, label:'TIKI HOOP' }
+};
 function buildHoop(level, framesData){
-  level._hoop = null; if(!level.hoop) return;
-  const fr = nearestFrameToXY(framesData, level.hoop.x, level.hoop.y - 4);
-  const P = [], pink = new THREE.Color(0xff4fa8), wht = new THREE.Color(0xfff6fb), gold = new THREE.Color(0xffd040), mint = new THREE.Color(0x5ff0c8);
-  const SEG = 16; // 16 alternating candy segments around the ring
-  for(let i=0;i<SEG;i++){ const g = new THREE.TorusGeometry(HOOP_R, HOOP_TUBE, 8, 4, Math.PI*2/SEG); g.rotateZ(i*Math.PI*2/SEG); P.push(_dolPart(g, i%2 ? wht : pink)); }
-  const rim = new THREE.TorusGeometry(HOOP_R + HOOP_TUBE + 0.08, 0.09, 6, 48); P.push(_dolPart(rim, gold));
-  const inner = new THREE.TorusGeometry(HOOP_R - HOOP_TUBE - 0.06, 0.06, 6, 48); P.push(_dolPart(inner, mint));
-  for(let i=0;i<8;i++){ const a = i*Math.PI/4, gem = new THREE.OctahedronGeometry(0.2, 0); gem.translate(Math.cos(a)*(HOOP_R + HOOP_TUBE + 0.12), Math.sin(a)*(HOOP_R + HOOP_TUBE + 0.12), 0); P.push(_dolPart(gem, gold)); }
-  const m = new THREE.Mesh(mergeGeometries(P), hoopMat), g = m; m.rotation.order = 'YZX'; // yaw, then barber-pole spin about the ring's own axis (one mesh, so clearGroup disposes it)
-  m.rotation.y = Math.PI/2 - 0.8; // faces the direction of travel, turned ~46° toward the side camera so it reads as a ring, not a stick
-  const z = fr ? fr.pos.z : 0; g.position.set(level.hoop.x, level.hoop.y, z); pickupGroup.add(g);
-  level._hoop = { m, g, x:level.hoop.x, y0:level.hoop.y, y:level.hoop.y, z, t:0, aY:0, assist:0, px:car.pos.x, hits:0, punch:0 };
+  level._hoop = null; level._hoops = [];
+  const list = level.hoops || (level.hoop ? [level.hoop] : []); if(!list.length) return;
+  const th = HOOP_THEMES[level.hoopTheme || 'candy'];
+  list.slice(0, hoopMats.length).forEach((hp, i)=>{
+    const fr = nearestFrameToXY(framesData, hp.x, hp.y - 4);
+    const P = [], ca = new THREE.Color(th.a), cb = new THREE.Color(th.b), rimC = new THREE.Color(th.rim), inC = new THREE.Color(th.inner), gemC = new THREE.Color(th.gem);
+    const SEG = 16; // 16 alternating stripe segments around the ring
+    for(let s=0;s<SEG;s++){ const g = new THREE.TorusGeometry(HOOP_R, HOOP_TUBE, 8, 4, Math.PI*2/SEG); g.rotateZ(s*Math.PI*2/SEG); P.push(_dolPart(g, s%2 ? cb : ca)); }
+    P.push(_dolPart(new THREE.TorusGeometry(HOOP_R + HOOP_TUBE + 0.08, 0.09, 6, 48), rimC));
+    P.push(_dolPart(new THREE.TorusGeometry(HOOP_R - HOOP_TUBE - 0.06, 0.06, 6, 48), inC));
+    for(let s=0;s<8;s++){ const a = s*Math.PI/4, gem = new THREE.OctahedronGeometry(0.2, 0); gem.translate(Math.cos(a)*(HOOP_R + HOOP_TUBE + 0.12), Math.sin(a)*(HOOP_R + HOOP_TUBE + 0.12), 0); P.push(_dolPart(gem, gemC)); }
+    const m = new THREE.Mesh(mergeGeometries(P), hoopMats[i]); m.rotation.order = 'YZX'; // yaw, then barber-pole spin about the ring's own axis
+    m.rotation.y = Math.PI/2 - 0.8; // faces the direction of travel, turned ~46° toward the side camera so it reads as a ring, not a stick
+    const z = fr ? fr.pos.z : 0; m.position.set(hp.x, hp.y, z); pickupGroup.add(m);
+    level._hoops.push({ m, g:m, mat:hoopMats[i], i, x:hp.x, y0:hp.y, y:hp.y, z, t:0, ph:i*0.9, aY:0, assist:0, px:car.pos.x, hits:0, punch:0, done:false });
+  });
+  level._hoop = level._hoops[0]; level._hoopLabel = th.label; state.hoopChain = 0; state.hoopChains = 0;
 }
 function updateHoop(dt){
-  const H = state.level && state.level._hoop; if(!H) return;
-  H.t += dt; const bob = H.y0 + 1.5*Math.sin(H.t*1.4);
-  const dx = H.x - car.pos.x, play = state.mode==='play';
-  if(play && !car.grounded && dx > 0 && dx < 16 && !H.done){ H.assist = Math.min(1, H.assist + dt*2.5); H.aY = car.pos.y + 0.5; } // drifts to meet your line
-  else H.assist = Math.max(0, H.assist - dt*0.8);
-  H.y = bob + (H.aY - bob)*H.assist*H.assist*(3 - 2*H.assist);
-  if(play && !H.done && H.px < H.x && car.pos.x >= H.x && Math.abs(car.pos.y + 0.4 - H.y) < HOOP_R){
-    H.done = true; H.hits++; H.punch = 1; state.hoops = (state.hoops||0) + 1;
-    const C = [[1,0.31,0.66],[1,0.96,0.98],[1,0.82,0.25],[0.37,0.94,0.78]];
-    for(let i=0;i<36;i++){ const a = i/36*Math.PI*2, c = C[i%4], v = 5 + Math.random()*3; spawnParticle(H.x, H.y + Math.sin(a)*HOOP_R, H.z + Math.cos(a)*HOOP_R, 2 + Math.random()*3, Math.sin(a)*v, Math.cos(a)*v, 0.8 + Math.random()*0.5, c[0], c[1], c[2]); }
-    audio.coin(); if(audio.boost) audio.boost(); haptic(18); state.shake = Math.max(state.shake, 0.15); addScore(200, 'CANDY HOOP!', 'combo');
+  const L = state.level, HS = L && L._hoops; if(!HS || !HS.length) return;
+  const play = state.mode==='play', chainLv = HS.length > 1;
+  if(play && car.grounded) state.hoopChain = 0; // a chain only counts inside one flight
+  for(let i=0;i<HS.length;i++){
+    const H = HS[i];
+    H.t += dt; const bob = H.y0 + 1.5*Math.sin(H.t*1.4 + H.ph);
+    const dx = H.x - car.pos.x;
+    if(play && !car.grounded && dx > 0 && dx < 16 && !H.done){ H.assist = Math.min(1, H.assist + dt*2.5); H.aY = car.pos.y + 0.5; } // drifts to meet your line
+    else H.assist = Math.max(0, H.assist - dt*0.8);
+    H.y = bob + (H.aY - bob)*H.assist*H.assist*(3 - 2*H.assist);
+    if(play && !H.done && H.px < H.x && car.pos.x >= H.x && Math.abs(car.pos.y + 0.4 - H.y) < HOOP_R){
+      H.done = true; H.hits++; H.punch = 1; state.hoops = (state.hoops||0) + 1; state.hoopChain = (state.hoopChain||0) + 1;
+      const C = chainLv ? [[0.08,0.78,0.75],[0.96,1,0.99],[1,0.76,0.23],[1,0.44,0.31]] : [[1,0.31,0.66],[1,0.96,0.98],[1,0.82,0.25],[0.37,0.94,0.78]];
+      for(let k=0;k<36;k++){ const a = k/36*Math.PI*2, c = C[k%4], v = 5 + Math.random()*3; spawnParticle(H.x, H.y + Math.sin(a)*HOOP_R, H.z + Math.cos(a)*HOOP_R, 2 + Math.random()*3, Math.sin(a)*v, Math.cos(a)*v, 0.8 + Math.random()*0.5, c[0], c[1], c[2]); }
+      audio.coin(); if(audio.boost) audio.boost(); haptic(18); state.shake = Math.max(state.shake, 0.15);
+      addScore(200, chainLv ? L._hoopLabel + ' ' + state.hoopChain + '!' : L._hoopLabel, 'combo');
+      if(chainLv && state.hoopChain >= HS.length){ // threaded every hoop in one flight
+        state.hoopChains = (state.hoopChains||0) + 1;
+        for(let k=0;k<60;k++){ const a = k/60*Math.PI*2, v = 7 + Math.random()*4, hue = k/60; const c = _hoopRGB(hue); spawnParticle(H.x, H.y + Math.sin(a)*HOOP_R*1.4, H.z + Math.cos(a)*HOOP_R*1.4, 3 + Math.random()*3, Math.sin(a)*v, Math.cos(a)*v, 1.0 + Math.random()*0.6, c[0], c[1], c[2]); }
+        if(!(state.slowmoUsedAt > performance.now()-4000)){ state.slowmo = 0.5; state.slowmoScale = 0.5; state.slowmoUsedAt = performance.now(); }
+        state.shake = Math.max(state.shake, 0.3); haptic(30); if(audio.boost) audio.boost();
+        addScore(500, 'HOOP CHAIN!', 'combo');
+      }
+    }
+    if(play && car.pos.x < H.x - 20) H.done = false; // respawned behind it: it's live again
+    H.px = car.pos.x;
+    H.punch = Math.max(0, H.punch - dt*1.6); const sc = 1 + 0.35*H.punch*H.punch;
+    H.m.position.y = H.y; H.m.scale.setScalar(sc); H.m.rotation.z += dt*(1.2 + 6*H.punch);
+    const k = 1 + 0.6*H.punch; H.mat.color.setRGB(k, k, k);
   }
-  if(play && car.pos.x < H.x - 20) H.done = false; // respawned behind it: it's live again
-  H.px = car.pos.x;
-  H.punch = Math.max(0, H.punch - dt*1.6); const sc = 1 + 0.35*H.punch*H.punch;
-  H.g.position.y = H.y; H.g.scale.setScalar(sc); H.m.rotation.z += dt*(1.2 + 6*H.punch);
-  const k = 1 + 0.6*H.punch; hoopMat.color.setRGB(k, k, k);
 }
+const _hoopC = [0,0,0];
+function _hoopRGB(h){ const f = n => { const k = (n + h*6) % 6; return 1 - Math.max(0, Math.min(k, 4 - k, 1)); }; _hoopC[0] = f(5); _hoopC[1] = f(3); _hoopC[2] = f(1); return _hoopC; } // rainbow hue → rgb (reused array)
 function updateTrain(dt){
   const t = state.level && state.level._train; if(!t) return;
   t.g.position.x = t.x;
@@ -3043,7 +3070,7 @@ requestAnimationFrame(frame);
 
 // Expose for smoke tests
 window.__RSP = {
-  version:23, hoop:()=>{ const H=state.level&&state.level._hoop; return H?{x:H.x, y:+H.y.toFixed(2), y0:H.y0, hits:H.hits, n:state.hoops||0, punch:+H.punch.toFixed(3), spin:+H.m.rotation.z.toFixed(2), t:+H.t.toFixed(2), carX:car.pos.x, carY:car.pos.y, unlit:H.m.material.type}:null; }, ambient:()=>({fanSpin:(state.level&&state.level._fans&&state.level._fans[0])?+state.level._fans[0].blades.rotation.y.toFixed(2):null, sawT:(state.level&&state.level._saw)?+state.level._saw.t.toFixed(2):null, kickT:(state.level&&state.level._kick)?+state.level._kick.t.toFixed(2):null, popT:(state.level&&state.level._pop)?+state.level._pop.t.toFixed(2):null, hoopT:(state.level&&state.level._hoop)?+state.level._hoop.t.toFixed(2):null, mode:state.mode, bonks:state.bonks||0}), sawStripeColor:()=>{ const S=state.level&&state.level._saw; if(!S) return null; const st=S.pv.children[0]; return {unlit:st.material.type, blocks:st.geometry.attributes.position.count}; }, seesaw:()=>{ const S=state.level&&state.level._saw; return S?{x:+S.x.toFixed(1), y:S.y, ang:+S.ang.toFixed(3), state:S.state, hits:S.hits, slams:S.slams, n:state.seesaws||0, carX:car.pos.x, air:!car.grounded, ei:+sawMat.emissiveIntensity.toFixed(2)}:null; }, _flatRuns:(mn)=>flatRuns(state.level,state.framesData,mn).map(r=>[+r.a.pos.x.toFixed(1),+r.b.pos.x.toFixed(1),+r.a.pos.y.toFixed(1)]), _steep:()=>{ const o=[]; for(const sg of state.framesData.segs) for(const f of sg.frames) if(f.normal.y<0.5) o.push(Math.round(f.pos.x)); return [...new Set(o)]; }, popRamp:()=>{ const Q=state.level&&state.level._pop; return Q?{x:Q.x, y:Q.y, h:+Q.h.toFixed(3), t:Q.t, hits:Q.hits, maxPops:Q.maxPops, rolls:Q.rolls, pops:state.pops||0, carX:car.pos.x, air:!car.grounded, scaleY:Q.m.scale.y}:null; }, setPopPhase:(t)=>{ const Q=state.level&&state.level._pop; if(Q){ Q.t=t; Q.cool=0; Q.aH=0; } }, popAssistInfo:()=>{ const Q=state.level&&state.level._pop; return Q?{assist:Q.assist, aH:+Q.aH.toFixed(3), holds:Q.holds, h:+Q.h.toFixed(3)}:null; }, trail:()=>trailInfo(), popHeight,
+  version:24, hoops:()=>{ const HS=state.level&&state.level._hoops; return HS&&HS.length?{n:HS.length, list:HS.map(H=>({x:H.x, y:+H.y.toFixed(2), hits:H.hits, done:H.done, punch:+H.punch.toFixed(3)})), total:state.hoops||0, chain:state.hoopChain||0, chains:state.hoopChains||0, unlit:HS[0].m.material.type, mats:new Set(HS.map(H=>H.m.material)).size}:null; }, hoop:()=>{ const H=state.level&&state.level._hoop; return H?{x:H.x, y:+H.y.toFixed(2), y0:H.y0, hits:H.hits, n:state.hoops||0, punch:+H.punch.toFixed(3), spin:+H.m.rotation.z.toFixed(2), t:+H.t.toFixed(2), carX:car.pos.x, carY:car.pos.y, unlit:H.m.material.type}:null; }, ambient:()=>({fanSpin:(state.level&&state.level._fans&&state.level._fans[0])?+state.level._fans[0].blades.rotation.y.toFixed(2):null, sawT:(state.level&&state.level._saw)?+state.level._saw.t.toFixed(2):null, kickT:(state.level&&state.level._kick)?+state.level._kick.t.toFixed(2):null, popT:(state.level&&state.level._pop)?+state.level._pop.t.toFixed(2):null, hoopT:(state.level&&state.level._hoop)?+state.level._hoop.t.toFixed(2):null, mode:state.mode, bonks:state.bonks||0}), sawStripeColor:()=>{ const S=state.level&&state.level._saw; if(!S) return null; const st=S.pv.children[0]; return {unlit:st.material.type, blocks:st.geometry.attributes.position.count}; }, seesaw:()=>{ const S=state.level&&state.level._saw; return S?{x:+S.x.toFixed(1), y:S.y, ang:+S.ang.toFixed(3), state:S.state, hits:S.hits, slams:S.slams, n:state.seesaws||0, carX:car.pos.x, air:!car.grounded, ei:+sawMat.emissiveIntensity.toFixed(2)}:null; }, _flatRuns:(mn)=>flatRuns(state.level,state.framesData,mn).map(r=>[+r.a.pos.x.toFixed(1),+r.b.pos.x.toFixed(1),+r.a.pos.y.toFixed(1)]), _steep:()=>{ const o=[]; for(const sg of state.framesData.segs) for(const f of sg.frames) if(f.normal.y<0.5) o.push(Math.round(f.pos.x)); return [...new Set(o)]; }, popRamp:()=>{ const Q=state.level&&state.level._pop; return Q?{x:Q.x, y:Q.y, h:+Q.h.toFixed(3), t:Q.t, hits:Q.hits, maxPops:Q.maxPops, rolls:Q.rolls, pops:state.pops||0, carX:car.pos.x, air:!car.grounded, scaleY:Q.m.scale.y}:null; }, setPopPhase:(t)=>{ const Q=state.level&&state.level._pop; if(Q){ Q.t=t; Q.cool=0; Q.aH=0; } }, popAssistInfo:()=>{ const Q=state.level&&state.level._pop; return Q?{assist:Q.assist, aH:+Q.aH.toFixed(3), holds:Q.holds, h:+Q.h.toFixed(3)}:null; }, trail:()=>trailInfo(), popHeight,
   hud:()=>{ const r=id=>{ const e=document.getElementById(id); if(!e||getComputedStyle(e).display==='none') return null; const b=e.getBoundingClientRect(); return {x:b.left,y:b.top,w:b.width,h:b.height}; }; return {score:r('scorePanel'), mult:r('multPanel'), grade:r('gradePanel'), tilt:r('tiltToggle'), music:r('musicBtn'), pause:r('pauseBtn'), fuel:r('fuelWrap'), combo:r('combo'), starHud:r('starHud'), comboShown:comboEl.classList.contains('show'), fuelCls:fuelWrapEl.className}; },
   forceCombo:(n)=>{ state.combo=n; state.mult=n; state.comboTimer=3; punchCombo(); updateHUD(); }, prewarms:()=>_prewarmN, programs:()=>renderer.info.programs.length, pTex:()=>!!pMat.map, staticFrozen:()=>{ let n=0,f=0; for(const G of [trackGroup,decorGroup]) G.traverse(o=>{ if(o!==G){ n++; if(!o.matrixAutoUpdate) f++; } }); return {n,f}; },
   kicker:()=>{ const K=state.level&&state.level._kick; return K?{x:K.x, cx:K.cx, amp:K.amp, hits:K.hits, kicks:state.kicks||0, carX:car.pos.x, air:!car.grounded}:null; }, seaFx:()=>({fog:seaMat.fog, ei:seaMat.emissiveIntensity, embers:seaState.embers||0, caps:seaState.caps||0}), calls:()=>renderer.info.render.calls,
