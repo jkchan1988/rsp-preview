@@ -460,6 +460,7 @@ function addSetPieces(){ // v9: research set pieces — kid-safe bounce pad + po
   LEVELS[6].lava=3;
   LEVELS[1].popRamp=true; LEVELS[3].popRamp=true; // v20: L8 ramp removed: at full gas the car flies over every flat run there, so it could never be caught (0 hits in v19 and v20 drives). v19: hydraulic pop-up ramp (moving track piece). L5/L7: no flat run far enough from a loop/steep section
   LEVELS[0].kicker=true; LEVELS[2].kicker=true; LEVELS[5].kicker=true; // v18: sliding kicker ramp (research: moving ramps / moving track pieces)
+  LEVELS[6].seesaw=true; LEVELS[6].seesawAt=197; // v21: rocking see-saw ramp (moving track piece) on flats the car actually drives on at full gas (L3's flats are jumped over, L5 has none)
   LEVELS[1].dolphins=true; LEVELS[7].dolphins=true; // v17: dolphin leap set piece over the sea (research: slow-mo animal jumps; kid-safe dolphins, not sharks)
 }
 (function buildLevels(){
@@ -811,16 +812,33 @@ function updateParticles(dt){
    on ROCKET (gold in ROCKET, cool cyan otherwise), so flips and big air draw a light arc across the sky like the real game's
    stunt streaks. Ribbons follow the car's own up vector, so they hug loops too. One geometry, one draw call, no allocations. */
 const TR_N = 26, TR_V = TR_N*2;
+/* v21 TECH: zero per-frame JS allocations, measured with CDP heap sampling. v20 rebuilt ~520 floats of ribbon in JS every
+   frame; before the JIT warms up (and always on slow devices) every float op is boxed into a heap number (~9 KB/frame of
+   garbage). Now each ribbon sample is just a snapshot of the car's world matrix: per frame JS does one native memmove
+   (copyWithin) to age the history and one native copy (TypedArray.set) of the 16 matrix floats into the newest slot. No JS
+   float maths at all. The GPU rebuilds the ribbon in the vertex shader (corner = M * local tail-light point, widened along
+   the car's up axis with a static per-vertex taper). Fade colours are static; brightness + cyan/gold tint ride on the
+   material colour (additive blend). Same look as v20, one draw call. */
 const trGeo = new THREE.BufferGeometry();
-const trPos = new Float32Array(2*TR_V*3), trCol = new Float32Array(2*TR_V*3);
-trGeo.setAttribute('position', new THREE.BufferAttribute(trPos,3)); trGeo.setAttribute('color', new THREE.BufferAttribute(trCol,3));
+const TR_VERTS = 2*TR_V, TR_SL = 2*16; // floats per sample slot in the matrix stream (2 vertices x 16)
+const trM = new Float32Array(TR_VERTS*16), trLoc = new Float32Array(TR_VERTS*4), trCol = new Float32Array(TR_VERTS*3);
+const TR_LX = -2.55, TR_LY = 0.62, TR_LZ = [0.72, -0.72];
+for(let r=0;r<2;r++) for(let i=0;i<TR_N;i++){ const u=i/(TR_N-1), a=(1-u)*(1-u)*0.9, w=0.2*(1-u)+0.02;
+  for(let s=0;s<2;s++){ const v=r*TR_V+i*2+s; trCol[v*3]=trCol[v*3+1]=trCol[v*3+2]=a; trLoc[v*4]=TR_LX; trLoc[v*4+1]=TR_LY; trLoc[v*4+2]=TR_LZ[r]; trLoc[v*4+3]=s?-w:w; } }
+trGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(TR_VERTS*3),3)); // unused by the shader (frustumCulled off)
+trGeo.setAttribute('color', new THREE.BufferAttribute(trCol,3)); trGeo.setAttribute('trLoc', new THREE.BufferAttribute(trLoc,4));
+const trMAttr = new THREE.InterleavedBuffer(trM, 16).setUsage(THREE.DynamicDrawUsage);
+for(let v=0;v<TR_VERTS;v++) trM[v*16]=trM[v*16+5]=trM[v*16+10]=trM[v*16+15]=1; // identity until the first frame
+for(let c=0;c<4;c++) trGeo.setAttribute('trM'+c, new THREE.InterleavedBufferAttribute(trMAttr, 4, c*4));
 { const idx=[]; for(let r=0;r<2;r++){ const o=r*TR_V; for(let i=0;i<TR_N-1;i++){ const a=o+i*2, b=a+1, c=a+2, d=a+3; idx.push(a,b,c, b,d,c); } } trGeo.setIndex(idx); }
-const trMat = new THREE.MeshBasicMaterial({ vertexColors:true, transparent:true, depthWrite:false, blending:THREE.AdditiveBlending, side:THREE.DoubleSide, forceSinglePass:true, fog:false }); // single pass: three.js otherwise re-flags a transparent double-sided material twice a frame (shader churn)
+const trMat = new THREE.MeshBasicMaterial({ color:0x000000, vertexColors:true, transparent:true, depthWrite:false, blending:THREE.AdditiveBlending, side:THREE.DoubleSide, forceSinglePass:true, fog:false }); // single pass: three.js otherwise re-flags a transparent double-sided material twice a frame (shader churn)
+trMat.onBeforeCompile = sh => { sh.vertexShader = 'attribute vec4 trLoc;\nattribute vec4 trM0;\nattribute vec4 trM1;\nattribute vec4 trM2;\nattribute vec4 trM3;\n' +
+  sh.vertexShader.replace('#include <begin_vertex>', 'mat4 trWM = mat4(trM0, trM1, trM2, trM3);\nvec3 transformed = (trWM * vec4(trLoc.xyz, 1.0)).xyz + normalize(trM1.xyz) * trLoc.w;'); };
+trMat.customProgramCacheKey = () => 'rspTrail21';
 const trMesh = new THREE.Mesh(trGeo, trMat); trMesh.frustumCulled = false; trMesh.visible = false; trMesh.userData.dynamic = true; scene.add(trMesh);
-const trHist = [new Float32Array(TR_N*3), new Float32Array(TR_N*3)], trUp = new Float32Array(TR_N*3);
-let trHead = 0, trK = 0, trReset = true, trMax = 0;
-const _trV = new THREE.Vector3(), _trU = new THREE.Vector3(), _trLast = new THREE.Vector3(), _trCol = new THREE.Color();
-const TR_LOCAL = [[-2.55, 0.62, 0.72], [-2.55, 0.62, -0.72]];
+let trK = 0, trReset = true, trMax = 0, trRocket = false, trUploads = 0;
+const _trLast = new THREE.Vector3(), _trCol = new THREE.Color(), _trP = new THREE.Vector3(), _trQ = new THREE.Vector3(), _trMx = new THREE.Matrix4();
+const TR_RIB = TR_V*16, TR_SHIFT = TR_RIB - TR_SL;
 function updateTrail(dt){
   const G = carVisual.group, active = state.mode==='play' || state.mode==='pause' || state.mode==='grade';
   if(!active){ trMesh.visible = false; trK = 0; trReset = true; return; }
@@ -830,26 +848,20 @@ function updateTrail(dt){
   if(_trLast.distanceToSquared(G.position) > 36) trReset = true; // respawn / checkpoint jump: don't draw a streak across the map
   _trLast.copy(G.position);
   G.updateMatrixWorld();
-  _trU.set(0,1,0).applyQuaternion(G.quaternion);
-  if(trReset){ for(let r=0;r<2;r++){ _trV.set(...TR_LOCAL[r]); G.localToWorld(_trV); for(let i=0;i<TR_N;i++){ trHist[r][i*3]=_trV.x; trHist[r][i*3+1]=_trV.y; trHist[r][i*3+2]=_trV.z; trUp[i*3]=_trU.x; trUp[i*3+1]=_trU.y; trUp[i*3+2]=_trU.z; } } trReset = false; }
-  trHead = (trHead + 1) % TR_N;
-  for(let r=0;r<2;r++){ _trV.set(...TR_LOCAL[r]); G.localToWorld(_trV); trHist[r][trHead*3]=_trV.x; trHist[r][trHead*3+1]=_trV.y; trHist[r][trHead*3+2]=_trV.z; }
-  trUp[trHead*3]=_trU.x; trUp[trHead*3+1]=_trU.y; trUp[trHead*3+2]=_trU.z;
+  const e = G.matrixWorld.elements;
+  for(let r=0;r<2;r++){ const o = r*TR_RIB;
+    if(trReset){ for(let v=0; v<TR_V; v++) trM.set(e, o + v*16); } // collapse the whole history onto the car
+    else { trM.copyWithin(o + TR_SL, o, o + TR_SHIFT); trM.set(e, o); trM.set(e, o + 16); } }
+  trReset = false;
+  trMAttr.needsUpdate = true; trUploads++;
   if(trK < 0.02){ trMesh.visible = false; return; }
   trMesh.visible = true;
-  _trCol.setHex(rocket ? 0xffb040 : 0x60d8ff);
-  for(let r=0;r<2;r++){ const H = trHist[r], o = r*TR_V*3;
-    for(let i=0;i<TR_N;i++){ // i=0 newest
-      const j = ((trHead - i) % TR_N + TR_N) % TR_N, u = i/(TR_N-1), w = 0.2*(1-u)+0.02, a = trK*(1-u)*(1-u)*0.9;
-      const ux=trUp[j*3], uy=trUp[j*3+1], uz=trUp[j*3+2], k=o+i*6;
-      trPos[k]=H[j*3]+ux*w; trPos[k+1]=H[j*3+1]+uy*w; trPos[k+2]=H[j*3+2]+uz*w;
-      trPos[k+3]=H[j*3]-ux*w; trPos[k+4]=H[j*3+1]-uy*w; trPos[k+5]=H[j*3+2]-uz*w;
-      const cr=_trCol.r*a, cg=_trCol.g*a, cb=_trCol.b*a; trCol[k]=cr; trCol[k+1]=cg; trCol[k+2]=cb; trCol[k+3]=cr; trCol[k+4]=cg; trCol[k+5]=cb;
-    } }
-  trGeo.attributes.position.needsUpdate = true; trGeo.attributes.color.needsUpdate = true;
+  if(rocket !== trRocket || !trMat.userData.init){ trRocket = rocket; trMat.userData.init = true; _trCol.setHex(rocket ? 0xffb040 : 0x60d8ff); }
+  trMat.color.copy(_trCol).multiplyScalar(trK);
   if(trK > trMax) trMax = trK;
 }
-function trailInfo(){ let len=0; const H=trHist[0]; for(let i=1;i<TR_N;i++){ const a=((trHead-i+1)%TR_N+TR_N)%TR_N, b=((trHead-i)%TR_N+TR_N)%TR_N; len+=Math.hypot(H[a*3]-H[b*3],H[a*3+1]-H[b*3+1],H[a*3+2]-H[b*3+2]); } return { visible:trMesh.visible, k:+trK.toFixed(3), maxK:+trMax.toFixed(3), len:+len.toFixed(2), n:TR_N, color:trMesh.visible?_trCol.getHexString():null }; }
+function trSample(i, out){ _trMx.fromArray(trM, i*TR_SL); return out.set(TR_LX, TR_LY, TR_LZ[0]).applyMatrix4(_trMx); } // test/debug only
+function trailInfo(){ let len=0; for(let i=1;i<TR_N;i++) len+=trSample(i-1,_trP).distanceTo(trSample(i,_trQ)); return { visible:trMesh.visible, k:+trK.toFixed(3), maxK:+trMax.toFixed(3), len:+len.toFixed(2), n:TR_N, color:trMesh.visible?_trCol.getHexString():null, colorUploads:trGeo.attributes.color.version, uploads:trUploads }; }
 
 /* Track sampling — multi-segment with Frenet frames */
 function buildSegment(waypoints){
@@ -1124,7 +1136,7 @@ function buildPickups(level, framesData){
     bp._mesh = m; m.visible = true;
     pickupGroup.add(m);
   }
-  buildFans(level, framesData); buildTrain(level, framesData); buildBridge(level, framesData); buildGate(level, framesData); buildLava(level, framesData); buildDolphins(level, framesData); buildKicker(level, framesData); buildPopRamp(level, framesData);
+  buildFans(level, framesData); buildTrain(level, framesData); buildBridge(level, framesData); buildGate(level, framesData); buildLava(level, framesData); buildDolphins(level, framesData); buildKicker(level, framesData); buildPopRamp(level, framesData); buildSeesaw(level, framesData);
   const starMat = new THREE.MeshStandardMaterial({ color:0xffd76a, emissive:0xffaa20, emissiveIntensity:0.8, metalness:0.4, roughness:0.3 });
   const barrelMat = new THREE.MeshStandardMaterial({ color:0xc03018, emissive:0x801000, emissiveIntensity:0.35, metalness:0.3, roughness:0.55 });
   const crateMat = new THREE.MeshStandardMaterial({ color:0xc8a050, emissive:0x403010, emissiveIntensity:0.15, metalness:0.15, roughness:0.7 });
@@ -1647,6 +1659,71 @@ function popRampHit(fr, air){ // grounded physics step (or a low airborne skim o
   state.jumps=(state.jumps||0)+1; state.shake=Math.max(state.shake, max?0.3:0.2); state.fovPunch=Math.min(1,state.fovPunch+(max?0.35:0.22));
   for(let i=0;i<(max?18:10);i++) spawnParticle(Q.x+1.6, Q.y+1.2*Q.h, car.pos.z+(Math.random()-0.5)*2, (Math.random()-0.2)*5, 3+Math.random()*5, (Math.random()-0.5)*3, 0.55, 0.35, 0.9, 1.0);
   if(audio.boost) audio.boost(); audio.click(); haptic(max?22:14); addScore(max?220:120, max?'MAX POP!':'POP-UP RAMP!', 'pop');
+  return true;
+}
+
+/* v21 ROCKING SEE-SAW RAMP (moving track piece, research: moving ramps / moving track pieces). A long striped plank on a
+   glowing fulcrum rocks gently while you approach; once you're close and driving, your weight tips it nose-up (the tail
+   slaps down onto the road so you drive straight on), it catapults you skyward, then it slams back with a dust puff and
+   bounces to rest. Missing it is never a crash. Two meshes (plank + fulcrum), built once per level, no per-frame allocations. */
+const sawMat = new THREE.MeshStandardMaterial({ color:0xffffff, vertexColors:true, emissive:0xff7a1a, emissiveIntensity:0.2, roughness:0.5, flatShading:true });
+const sawStripMat = new THREE.MeshBasicMaterial({ color:0x5fe8ff, fog:false });
+const SAW_HALF = 3.6, SAW_PIV = 0.82, SAW_MAX = 0.23;
+function buildSeesaw(level, framesData){
+  level._saw = null; if(!level.seesaw) return;
+  const g0 = level._gate, K = level._kick, Q = level._pop, b = level._bridge;
+  const steepX = []; for(const sg of framesData.segs) for(const f of sg.frames) if(f.normal.y < 0.5) steepX.push(f.pos.x);
+  const at = r => Math.min(r.b.pos.x - SAW_HALF - 1, r.a.pos.x + Math.max(SAW_HALF + 5, (r.b.pos.x - r.a.pos.x)*0.55));
+  const clear = (r, ahead) => { const x = at(r), x0 = x - SAW_HALF, x1 = x + SAW_HALF; return x0 > 30 && x0 > r.a.pos.x + 2 && !steepX.some(s => s > x0-10 && s < x1+ahead) && !(g0 && g0.bx > x0-8 && g0.bx < x1+8) && !(K && Math.abs(K.cx - x) < 16) && !(Q && Math.abs(Q.x - x) < 16) && !(b && x1 > b.x0-6 && x0 < b.x1+6); };
+  let run = null; for(const [mn, ahead] of (level.seesawAt ? [[10,0]] : [[14,40],[12,30],[10,24]])){ run = flatRuns(level, framesData, mn).filter(r => clear(r, ahead)); if(level.seesawAt) run = run.filter(r => r.a.pos.x <= level.seesawAt && r.b.pos.x >= level.seesawAt); run = run[0]; if(run) break; } if(!run) return;
+  const cx = level.seesawAt ? Math.min(run.b.pos.x - SAW_HALF - 1, Math.max(run.a.pos.x + SAW_HALF + 2, level.seesawAt)) : at(run), W = TRACK_W*0.82;
+  const yel = new THREE.Color(0xffc22a), blu = new THREE.Color(0x2a6cff), wht = new THREE.Color(0xfff4d8), org = new THREE.Color(0xff6a1a), dk = new THREE.Color(0x2a2a36);
+  // side-view game: the plank's flank is what you see, so it's a chunky 0.42 m beam with bold yellow/blue hazard blocks,
+  // a white chevron row on top, an orange lip, and a big orange A-frame fulcrum with a white axle hub.
+  const P = [], plank = new THREE.BoxGeometry(SAW_HALF*2, 0.36, W); plank.translate(0, -0.02, 0); P.push(_dolPart(plank, dk));
+  for(let i=0;i<8;i++){ const st = new THREE.BoxGeometry(SAW_HALF*2/8 - 0.1, 0.42, W*1.03); st.translate(-SAW_HALF + (i+0.5)*SAW_HALF*2/8, 0, 0); P.push(_dolPart(st, i%2 ? blu : yel)); }
+  for(let i=0;i<4;i++){ for(const sg of [1,-1]){ const ch = new THREE.BoxGeometry(0.2, 0.08, W*0.5); ch.rotateY(0.6*sg); ch.translate(SAW_HALF - 0.7 - i*0.6, 0.24, -W*0.14*sg); P.push(_dolPart(ch, wht)); } }
+  const lip = new THREE.BoxGeometry(0.24, 0.6, W*1.05); lip.translate(SAW_HALF - 0.12, 0.08, 0); P.push(_dolPart(lip, org));
+  const pv = new THREE.Mesh(mergeGeometries(P), sawMat);
+  // v21 polish: a bright cyan light strip runs along both flanks of the plank so it reads clearly against the orange lava
+  // (lit stripes alone washed out to orange when the plank glowed). Unlit, merged, 1 extra draw call; it flares as the plank tips.
+  const LS = []; for(const z of [-W*0.53, W*0.53]){ const sb = new THREE.BoxGeometry(SAW_HALF*2 - 0.3, 0.09, 0.05); sb.translate(0, 0.25, z); LS.push(sb); for(let i=0;i<7;i++){ const bulb = new THREE.BoxGeometry(0.16, 0.16, 0.07); bulb.translate(-SAW_HALF + 0.55 + i*(SAW_HALF*2 - 1.1)/6, 0.25, z); LS.push(bulb); } }
+  const strip = new THREE.Mesh(mergeGeometries(LS), sawStripMat); pv.add(strip);
+  const B = []; for(const z of [-W*0.36, W*0.36]){ const leg = new THREE.CylinderGeometry(0.12, 1.1, SAW_PIV, 3); leg.rotateY(Math.PI/6); leg.scale(1, 1, 0.35); leg.translate(0, SAW_PIV/2 - 0.1, z); B.push(_dolPart(leg, org)); }
+  const axle = new THREE.CylinderGeometry(0.2, 0.2, W*1.1, 12); axle.rotateX(Math.PI/2); axle.translate(0, SAW_PIV - 0.1, 0); B.push(_dolPart(axle, wht));
+  for(const z of [-W*0.56, W*0.56]){ const hub = new THREE.CylinderGeometry(0.34, 0.34, 0.08, 14); hub.rotateX(Math.PI/2); hub.translate(0, SAW_PIV - 0.1, z); B.push(_dolPart(hub, yel)); }
+  const base = new THREE.Mesh(mergeGeometries(B), sawMat);
+  const f = nearestFrameToXY(framesData, cx, run.a.pos.y);
+  base.position.set(cx, f.pos.y, f.pos.z); pv.position.set(cx, f.pos.y + SAW_PIV, f.pos.z); pickupGroup.add(base); pickupGroup.add(pv);
+  level._saw = { pv, base, x:cx, y:f.pos.y, t:0, ang:0, av:0, tip:0, cool:0, hits:0, slams:0, state:'rock' };
+}
+function updateSeesaw(dt){
+  const S = state.level && state.level._saw; if(!S) return;
+  S.t += dt; if(S.cool > 0) S.cool -= dt;
+  const dx = S.x - car.pos.x;
+  let tgt;
+  if(S.state === 'rock'){ tgt = 0.12*Math.sin(S.t*1.7); if(state.mode==='play' && dx > 0 && dx < SAW_HALF + 9 && car.speed > 4 && car.grounded) S.state = 'tip'; }
+  if(S.state === 'tip'){ tgt = SAW_MAX; if(dx < -SAW_HALF - 2 || dx > SAW_HALF + 14){ S.state = 'rock'; } }
+  if(S.state === 'slam'){ tgt = -SAW_MAX*0.9; if(S.ang < -SAW_MAX*0.8 && S.av < 0){ S.state = 'settle'; S.slams++; for(let i=0;i<10;i++) spawnParticle(S.x + SAW_HALF*0.95, S.y + 0.15, car.pos.z + (Math.random()-0.5)*2.4, (Math.random()-0.3)*3, 0.8+Math.random()*1.6, (Math.random()-0.5)*2, 0.6, 0.85, 0.75, 0.55); if(audio.land) audio.land(0.3); } }
+  if(S.state === 'settle'){ tgt = 0; if(Math.abs(S.ang) < 0.01 && Math.abs(S.av) < 0.05){ S.state = 'rock'; S.t = 0; } }
+  const kS = S.state === 'rock' ? 18 : 90, dmp = S.state === 'settle' ? 5 : 11; // springy: overshoots and bounces on the slam
+  S.av += ((tgt - S.ang)*kS - S.av*dmp)*dt; S.ang += S.av*dt;
+  if(S.ang > SAW_MAX) { S.ang = SAW_MAX; if(S.av > 0) S.av = 0; } if(S.ang < -SAW_MAX) { S.ang = -SAW_MAX; if(S.av < 0) S.av = -S.av*0.35; }
+  S.pv.rotation.z = S.ang; S.tip = Math.max(0, S.ang/SAW_MAX);
+  sawMat.emissiveIntensity = 0.2 + 0.45*S.tip*S.tip; // v21 polish: softer glow keeps the yellow/blue hazard blocks readable
+  const sk = 0.75 + 0.6*S.tip; sawStripMat.color.setRGB(0.37*sk, 0.91*sk, sk);
+}
+function seesawHit(fr){ // grounded physics step; true if the car was launched
+  const S = state.level && state.level._saw; if(!S || S.cool > 0 || car.speed < 4) return false;
+  const dx = car.pos.x - S.x; if(dx < -SAW_HALF + 0.6 || dx > SAW_HALF || Math.abs(car.pos.y - S.y) > 3) return false;
+  S.cool = 1.4; S.hits++; S.state = 'slam'; S.av = Math.max(S.av, 1.5); state.seesaws = (state.seesaws||0)+1;
+  car.grounded=false; car.lipLaunch=true; car.airGrace=0.35;
+  car.vel.copy(fr.tangent).multiplyScalar(Math.min(MAX_SPEED, Math.max(11, car.speed))); car.vel.y = Math.min(13, 6 + car.speed*0.2); // keeps your speed (a loop follows on L7/L8) with a short, punchy hop that lands on the same flat
+  car.pitch=0; car.pitchVel=0; car.flipAcc=0; susp.vF -= 2.2; susp.vR -= 2.2;
+  state.jumps=(state.jumps||0)+1; state.shake=Math.max(state.shake,0.26); state.fovPunch=Math.min(1,state.fovPunch+0.3);
+  for(let i=0;i<16;i++) spawnParticle(S.x + SAW_HALF, S.y + SAW_PIV + 0.9, car.pos.z+(Math.random()-0.5)*2, (Math.random()-0.2)*5, 2.5+Math.random()*5, (Math.random()-0.5)*3, 0.55, 1, 0.6, 0.15);
+  if(!(state.slowmoUsedAt > performance.now()-4000)){ state.slowmo = 0.4; state.slowmoUsedAt = performance.now(); } // brief cinematic slow-mo (research #6)
+  if(audio.boost) audio.boost(); audio.click(); haptic(18); addScore(130, 'SEE-SAW LAUNCH!', 'pop');
   return true;
 }
 
@@ -2421,6 +2498,7 @@ function physicsStep(dt){
       }
       if(kickerHit(fr)) return; // v18 sliding kicker ramp
       if(popRampHit(fr)) return; // v19 pop-up ramp
+      if(seesawHit(fr)) return; // v21 rocking see-saw ramp
       { const fan = fanAt(car.pos.x, car.pos.y); // v11 WIND FAN: drive over it → the air pops you up, the column keeps lifting
         if(fan && fan.cool <= 0 && Math.abs(car.pos.x - fan.x) < 1.4){
           fan.cool = 1.2; fan.hits++; state.fanHits = (state.fanHits||0) + 1;
@@ -2858,7 +2936,7 @@ function frame(now){
     B.rotation.z = (susp.cR - susp.cF)/SUSP.wb + state.gLean;
     for(const h of carVisual.hubs){ h.hub.position.y = h.baseY + (h.front ? susp.hF : susp.hR); h.hub.rotation.z = -susp.spin; }
   } else { carVisual.body.position.y = SUSP.lift - SUSP.sag; carVisual.body.rotation.z = 0; for(const h of carVisual.hubs){ h.hub.position.y=h.baseY; } }
-  updateCoins(raw); if(state.mode==='play'){ updateFans(raw); updateTrain(raw); updateBridge(raw); updateGate(raw); updateLava(raw); updateDolphins(raw); updateKicker(raw); updatePopRamp(raw); } updateGhost(); updateTrail(raw); // v20 light trails
+  updateCoins(raw); if(state.mode==='play'){ updateFans(raw); updateTrain(raw); updateBridge(raw); updateGate(raw); updateLava(raw); updateDolphins(raw); updateKicker(raw); updatePopRamp(raw); updateSeesaw(raw); } updateGhost(); updateTrail(raw); // v20 light trails
   audio.engine(state.mode==='play' && !document.hidden, car.speed, !!input.gas, car.grounded, !!(input.thrust && state.fuel>0 && state.mode==='play'));
   for(const n of carVisual.nozzles){
     n.material.emissiveIntensity = (input.thrust && state.fuel>0 && state.mode==='play') ? 1.2 : 0.25;
@@ -2921,7 +2999,7 @@ requestAnimationFrame(frame);
 
 // Expose for smoke tests
 window.__RSP = {
-  version:20, popRamp:()=>{ const Q=state.level&&state.level._pop; return Q?{x:Q.x, y:Q.y, h:+Q.h.toFixed(3), t:Q.t, hits:Q.hits, maxPops:Q.maxPops, rolls:Q.rolls, pops:state.pops||0, carX:car.pos.x, air:!car.grounded, scaleY:Q.m.scale.y}:null; }, setPopPhase:(t)=>{ const Q=state.level&&state.level._pop; if(Q){ Q.t=t; Q.cool=0; Q.aH=0; } }, popAssistInfo:()=>{ const Q=state.level&&state.level._pop; return Q?{assist:Q.assist, aH:+Q.aH.toFixed(3), holds:Q.holds, h:+Q.h.toFixed(3)}:null; }, trail:()=>trailInfo(), popHeight,
+  version:21, seesaw:()=>{ const S=state.level&&state.level._saw; return S?{x:+S.x.toFixed(1), y:S.y, ang:+S.ang.toFixed(3), state:S.state, hits:S.hits, slams:S.slams, n:state.seesaws||0, carX:car.pos.x, air:!car.grounded, ei:+sawMat.emissiveIntensity.toFixed(2)}:null; }, _flatRuns:(mn)=>flatRuns(state.level,state.framesData,mn).map(r=>[+r.a.pos.x.toFixed(1),+r.b.pos.x.toFixed(1),+r.a.pos.y.toFixed(1)]), _steep:()=>{ const o=[]; for(const sg of state.framesData.segs) for(const f of sg.frames) if(f.normal.y<0.5) o.push(Math.round(f.pos.x)); return [...new Set(o)]; }, popRamp:()=>{ const Q=state.level&&state.level._pop; return Q?{x:Q.x, y:Q.y, h:+Q.h.toFixed(3), t:Q.t, hits:Q.hits, maxPops:Q.maxPops, rolls:Q.rolls, pops:state.pops||0, carX:car.pos.x, air:!car.grounded, scaleY:Q.m.scale.y}:null; }, setPopPhase:(t)=>{ const Q=state.level&&state.level._pop; if(Q){ Q.t=t; Q.cool=0; Q.aH=0; } }, popAssistInfo:()=>{ const Q=state.level&&state.level._pop; return Q?{assist:Q.assist, aH:+Q.aH.toFixed(3), holds:Q.holds, h:+Q.h.toFixed(3)}:null; }, trail:()=>trailInfo(), popHeight,
   hud:()=>{ const r=id=>{ const e=document.getElementById(id); if(!e||getComputedStyle(e).display==='none') return null; const b=e.getBoundingClientRect(); return {x:b.left,y:b.top,w:b.width,h:b.height}; }; return {score:r('scorePanel'), mult:r('multPanel'), grade:r('gradePanel'), tilt:r('tiltToggle'), music:r('musicBtn'), pause:r('pauseBtn'), fuel:r('fuelWrap'), combo:r('combo'), starHud:r('starHud'), comboShown:comboEl.classList.contains('show'), fuelCls:fuelWrapEl.className}; },
   forceCombo:(n)=>{ state.combo=n; state.mult=n; state.comboTimer=3; punchCombo(); updateHUD(); }, prewarms:()=>_prewarmN, programs:()=>renderer.info.programs.length, pTex:()=>!!pMat.map, staticFrozen:()=>{ let n=0,f=0; for(const G of [trackGroup,decorGroup]) G.traverse(o=>{ if(o!==G){ n++; if(!o.matrixAutoUpdate) f++; } }); return {n,f}; },
   kicker:()=>{ const K=state.level&&state.level._kick; return K?{x:K.x, cx:K.cx, amp:K.amp, hits:K.hits, kicks:state.kicks||0, carX:car.pos.x, air:!car.grounded}:null; }, seaFx:()=>({fog:seaMat.fog, ei:seaMat.emissiveIntensity, embers:seaState.embers||0, caps:seaState.caps||0}), calls:()=>renderer.info.render.calls,
