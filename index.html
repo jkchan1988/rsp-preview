@@ -464,6 +464,8 @@ function addSetPieces(){ // v9: research set pieces — kid-safe bounce pad + po
   LEVELS[0].hoop={x:195.2, y:21.0}; LEVELS[0].hoopTheme='sun'; // v25: SUN HOOP, L1 Desert Dawn's first moving piece in the air: apex of its biggest full-gas jump (x 186→220, apex x≈195 y≈21.07 in two headless drives)
   LEVELS[3].hoop={x:192.6, y:16.3}; LEVELS[3].hoopTheme='neon'; // v26: NEON HOOP, L4 Cyber Loop's first moving piece in the air: apex of its second big full-gas jump (x 188→206, apex x≈192.6 y≈16.3 in two headless drives)
   LEVELS[5].hoop={x:125.0, y:29.8}; LEVELS[5].hoopTheme='frost'; // v26: FROST HOOP, L6 Ice Bridge's first moving piece in the air: apex of its big full-gas jump (x 112→147, apex x≈125 y≈29.8 in two headless drives)
+  LEVELS[2].hoop={x:222.2, y:19.0}; LEVELS[2].hoopTheme='gear'; // v27: GEAR HOOP, L3 Industrial's first moving piece in the air: apex of its biggest full-gas jump (x 201→269, apex x≈222.2 y≈19.0 in two headless drives); hazard-striped cog that ticks round like a machine part
+  LEVELS[6].hoop={x:85.2, y:28.9}; LEVELS[6].hoopTheme='fire'; // v27: FIRE RING, L7 Volcano's moving piece in the air: apex of its big full-gas jump (x 64→124, apex x≈85.2 y≈28.9 in two headless drives); flickering cartoon flames, can never hurt the car
   LEVELS[4].hoop={x:184.6, y:7.0}; // v23: candy hoop floats at the apex of L5 Candy Waves' big full-gas jump (x 167→205, apex x≈184.6 y≈7.0 in a headless drive); L5 has no flats, so its moving piece lives in the air
   LEVELS[6].seesaw=true; LEVELS[6].seesawAt=197; LEVELS[1].seesaw=true; LEVELS[5].seesaw=true; LEVELS[5].seesawAt=68; // v22: see-saw also on L2 (auto-placed) and L6 (pinned to the x≈57–76 ledge; the auto spot sat on the finish straight, so it froze mid-bounce under the results screen). Both hit in headless full-gas drives. // v21: rocking see-saw ramp (moving track piece) on flats the car actually drives on at full gas (L3's flats are jumped over, L5 has none)
   LEVELS[1].dolphins=true; LEVELS[7].dolphins=true; // v17: dolphin leap set piece over the sea (research: slow-mo animal jumps; kid-safe dolphins, not sharks)
@@ -1775,6 +1777,8 @@ const HOOP_THEMES = {
   sun:    { a:0xff8a1f, b:0xfff0c2, rim:0xff3d6e, inner:0x2fd6c6, gem:0xfff070, label:'SUN HOOP!' }, // v25 desert sunset palette
   neon:   { a:0x22f0ff, b:0xff3df0, rim:0xfff04a, inner:0x7cff5a, gem:0xffffff, label:'NEON HOOP!' }, // v26 cyber cyan/magenta with a lime core
   frost:  { a:0x8fe0ff, b:0xffffff, rim:0x3d6dff, inner:0xff7ad9, gem:0xe8fbff, label:'FROST HOOP!' }, // v26 ice blue/white with a pink core
+  gear:   { a:0xffc21a, b:0x2b2f36, rim:0xc4d0dc, inner:0xff7a1a, gem:0xc4d0dc, label:'GEAR HOOP!', teeth:true, tick:true }, // v27 Industrial hazard yellow/black with steel cog teeth, ticks round like a ratchet
+  fire:   { a:0xff3b1a, b:0xffb21f, rim:0xffe680, inner:0xfff4c8, gem:0xffe680, label:'FIRE RING!', flames:true }, // v27 Volcano red/orange stunt ring with flickering cartoon flames (purely visual)
   tropic: { a:0x14c8c0, b:0xf4fffd, rim:0xffc23a, inner:0xff6f4f, gem:0xff6f4f, label:'TIKI HOOP' }
 };
 function buildHoop(level, framesData){
@@ -1788,11 +1792,15 @@ function buildHoop(level, framesData){
     for(let s=0;s<SEG;s++){ const g = new THREE.TorusGeometry(HOOP_R, HOOP_TUBE, 8, 4, Math.PI*2/SEG); g.rotateZ(s*Math.PI*2/SEG); P.push(_dolPart(g, s%2 ? cb : ca)); }
     P.push(_dolPart(new THREE.TorusGeometry(HOOP_R + HOOP_TUBE + 0.08, 0.09, 6, 48), rimC));
     P.push(_dolPart(new THREE.TorusGeometry(HOOP_R - HOOP_TUBE - 0.06, 0.06, 6, 48), inC));
-    for(let s=0;s<8;s++){ const a = s*Math.PI/4, gem = new THREE.OctahedronGeometry(0.2, 0); gem.translate(Math.cos(a)*(HOOP_R + HOOP_TUBE + 0.12), Math.sin(a)*(HOOP_R + HOOP_TUBE + 0.12), 0); P.push(_dolPart(gem, gemC)); }
+    if(th.teeth){ for(let s=0;s<12;s++){ const a = s*Math.PI/6, tooth = new THREE.BoxGeometry(0.42, 0.46, 0.5); tooth.rotateZ(a); tooth.translate(Math.cos(a)*(HOOP_R + HOOP_TUBE + 0.3), Math.sin(a)*(HOOP_R + HOOP_TUBE + 0.3), 0); P.push(_dolPart(tooth, gemC)); } // v27: steel cog teeth instead of gems
+      const hub = new THREE.TorusGeometry(0.34, 0.1, 6, 16); P.push(_dolPart(hub, inC)); for(let s=0;s<3;s++){ const sp = new THREE.BoxGeometry(HOOP_R*2 - 0.7, 0.07, 0.07); sp.rotateZ(s*Math.PI/3); P.push(_dolPart(sp, gemC)); } } // thin spokes read as machinery; the car flies through them harmlessly
+    else for(let s=0;s<8;s++){ const a = s*Math.PI/4, gem = new THREE.OctahedronGeometry(0.2, 0); gem.translate(Math.cos(a)*(HOOP_R + HOOP_TUBE + 0.12), Math.sin(a)*(HOOP_R + HOOP_TUBE + 0.12), 0); P.push(_dolPart(gem, gemC)); }
     const m = new THREE.Mesh(mergeGeometries(P), hoopMats[i]); m.rotation.order = 'YZX'; // yaw, then barber-pole spin about the ring's own axis
     m.rotation.y = Math.PI/2 - 0.8; // faces the direction of travel, turned ~46° toward the side camera so it reads as a ring, not a stick
     const z = fr ? fr.pos.z : 0; m.position.set(hp.x, hp.y, z); pickupGroup.add(m);
-    level._hoops.push({ m, g:m, mat:hoopMats[i], i, x:hp.x, y0:hp.y, y:hp.y, z, t:0, ph:i*0.9, aY:0, assist:0, px:car.pos.x, hits:0, punch:0, done:false });
+    let fl = null;
+    if(th.flames){ fl = _hoopFlameMesh || (_hoopFlameMesh = _buildHoopFlames()); m.add(fl); } // v27: one shared flame crown (built once, reused; unlit)
+    level._hoops.push({ m, g:m, mat:hoopMats[i], i, x:hp.x, y0:hp.y, y:hp.y, z, t:0, ph:i*0.9, aY:0, assist:0, px:car.pos.x, hits:0, punch:0, done:false, fl, tick:!!th.tick, sp:0 });
   });
   level._hoop = level._hoops[0]; level._hoopLabel = th.label; state.hoopChain = 0; state.hoopChains = 0; level._hoopConf = [th.a, th.b, th.rim, th.inner].map(h=>[((h>>16)&255)/255, ((h>>8)&255)/255, (h&255)/255]); // same raw-hex convention as the v23/v24 confetti // v25: confetti in the hoop's own palette (built once per level)
 }
@@ -1824,9 +1832,28 @@ function updateHoop(dt){
     if(play && car.pos.x < H.x - 20) H.done = false; // respawned behind it: it's live again
     H.px = car.pos.x;
     H.punch = Math.max(0, H.punch - dt*1.6); const sc = 1 + 0.35*H.punch*H.punch;
-    H.m.position.y = H.y; H.m.scale.setScalar(sc); H.m.rotation.z += dt*(1.2 + 6*H.punch);
+    H.m.position.y = H.y; H.m.scale.setScalar(sc);
+    if(H.tick){ H.sp += dt*1.6; const n = Math.floor(H.sp), f = H.sp - n, e = f < 0.35 ? 0 : (f - 0.35)/0.65; H.m.rotation.z = (n + e*e*(3 - 2*e))*Math.PI/6 + H.punch*2.5; } // v27: gear ratchets one tooth at a time, like a factory machine
+    else H.m.rotation.z += dt*(1.2 + 6*H.punch);
+    if(H.fl){ const fk = 1 + 0.12*Math.sin(H.t*17.3) + 0.08*Math.sin(H.t*29.1 + 1.7) + 0.4*H.punch; H.fl.scale.set(fk, fk, 1); hoopFlameMat.opacity = Math.min(1, 0.84 + 0.12*Math.sin(H.t*23.7) + 0.1*H.punch); } // v27: flames flicker and flare on a pass
     const k = 1 + 0.6*H.punch; H.mat.color.setRGB(k, k, k);
   }
+}
+/* v27 FIRE RING flames: 14 cartoon flame tongues (tall cones, deep red at the base through orange to yellow-white at the tip) around the
+   ring, one merged mesh with its own material. Built once and reused across level loads, flickered with
+   scale + opacity only (no per-frame allocations). Purely visual: the car flies through the hoop centre, never touches them. */
+let _hoopFlameMesh = null;
+const hoopFlameMat = new THREE.MeshBasicMaterial({ color:0xffffff, vertexColors:true, transparent:true, opacity:0.95, depthWrite:false, fog:false, side:THREE.DoubleSide }); // normal blend: additive washed out against Volcano's orange sky
+function _buildHoopFlames(){
+  const P = [], base = new THREE.Color(0xb3120a), mid = new THREE.Color(0xff6a00), tip = new THREE.Color(0xffe23a);
+  for(let s=0;s<14;s++){
+    const a = s*Math.PI*2/14, h = s%2 ? 1.3 : 1.9, g = new THREE.ConeGeometry(0.36, h, 6, 4, true); // 4 rings so the red→orange→yellow gradient shows (1 ring blended to beige)
+    const pos = g.attributes.position, col = new Float32Array(pos.count*3);
+    for(let v=0;v<pos.count;v++){ const k = (pos.getY(v) + h/2)/h, c = k < 0.4 ? base.clone().lerp(mid, k/0.4) : mid.clone().lerp(tip, (k - 0.4)/0.6); col[v*3]=c.r; col[v*3+1]=c.g; col[v*3+2]=c.b; }
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    g.translate(0, HOOP_R + HOOP_TUBE + h/2 - 0.05, 0); g.rotateZ(a - Math.PI/2); P.push(g);
+  }
+  const m = new THREE.Mesh(mergeGeometries(P), hoopFlameMat); m.renderOrder = 2; return m;
 }
 const _hoopC = [0,0,0];
 function _hoopRGB(h){ const f = n => { const k = (n + h*6) % 6; return 1 - Math.max(0, Math.min(k, 4 - k, 1)); }; _hoopC[0] = f(5); _hoopC[1] = f(3); _hoopC[2] = f(1); return _hoopC; } // rainbow hue → rgb (reused array)
@@ -3077,7 +3104,7 @@ requestAnimationFrame(frame);
 
 // Expose for smoke tests
 window.__RSP = {
-  version:26, hoops:()=>{ const HS=state.level&&state.level._hoops; return HS&&HS.length?{n:HS.length, list:HS.map(H=>({x:H.x, y:+H.y.toFixed(2), hits:H.hits, done:H.done, punch:+H.punch.toFixed(3)})), total:state.hoops||0, chain:state.hoopChain||0, chains:state.hoopChains||0, unlit:HS[0].m.material.type, mats:new Set(HS.map(H=>H.m.material)).size}:null; }, hoop:()=>{ const H=state.level&&state.level._hoop; return H?{x:H.x, y:+H.y.toFixed(2), y0:H.y0, hits:H.hits, n:state.hoops||0, punch:+H.punch.toFixed(3), spin:+H.m.rotation.z.toFixed(2), t:+H.t.toFixed(2), carX:car.pos.x, carY:car.pos.y, unlit:H.m.material.type}:null; }, ambient:()=>({fanSpin:(state.level&&state.level._fans&&state.level._fans[0])?+state.level._fans[0].blades.rotation.y.toFixed(2):null, sawT:(state.level&&state.level._saw)?+state.level._saw.t.toFixed(2):null, kickT:(state.level&&state.level._kick)?+state.level._kick.t.toFixed(2):null, popT:(state.level&&state.level._pop)?+state.level._pop.t.toFixed(2):null, hoopT:(state.level&&state.level._hoop)?+state.level._hoop.t.toFixed(2):null, mode:state.mode, bonks:state.bonks||0}), sawStripeColor:()=>{ const S=state.level&&state.level._saw; if(!S) return null; const st=S.pv.children[0]; return {unlit:st.material.type, blocks:st.geometry.attributes.position.count}; }, seesaw:()=>{ const S=state.level&&state.level._saw; return S?{x:+S.x.toFixed(1), y:S.y, ang:+S.ang.toFixed(3), state:S.state, hits:S.hits, slams:S.slams, n:state.seesaws||0, carX:car.pos.x, air:!car.grounded, ei:+sawMat.emissiveIntensity.toFixed(2)}:null; }, _flatRuns:(mn)=>flatRuns(state.level,state.framesData,mn).map(r=>[+r.a.pos.x.toFixed(1),+r.b.pos.x.toFixed(1),+r.a.pos.y.toFixed(1)]), _steep:()=>{ const o=[]; for(const sg of state.framesData.segs) for(const f of sg.frames) if(f.normal.y<0.5) o.push(Math.round(f.pos.x)); return [...new Set(o)]; }, popRamp:()=>{ const Q=state.level&&state.level._pop; return Q?{x:Q.x, y:Q.y, h:+Q.h.toFixed(3), t:Q.t, hits:Q.hits, maxPops:Q.maxPops, rolls:Q.rolls, pops:state.pops||0, carX:car.pos.x, air:!car.grounded, scaleY:Q.m.scale.y}:null; }, setPopPhase:(t)=>{ const Q=state.level&&state.level._pop; if(Q){ Q.t=t; Q.cool=0; Q.aH=0; } }, popAssistInfo:()=>{ const Q=state.level&&state.level._pop; return Q?{assist:Q.assist, aH:+Q.aH.toFixed(3), holds:Q.holds, h:+Q.h.toFixed(3)}:null; }, trail:()=>trailInfo(), popHeight,
+  version:27, hoopTheme:()=>{ const L=state.level, H=L&&L._hoop; return H?{label:L._hoopLabel, flames:!!H.fl, flameScale:H.fl?+H.fl.scale.x.toFixed(3):null, flameOpacity:+hoopFlameMat.opacity.toFixed(3), flameUnlit:hoopFlameMat.type==='MeshBasicMaterial', tick:H.tick, rotZ:+H.m.rotation.z.toFixed(3), verts:H.m.geometry.attributes.position.count}:null; }, hoops:()=>{ const HS=state.level&&state.level._hoops; return HS&&HS.length?{n:HS.length, list:HS.map(H=>({x:H.x, y:+H.y.toFixed(2), hits:H.hits, done:H.done, punch:+H.punch.toFixed(3)})), total:state.hoops||0, chain:state.hoopChain||0, chains:state.hoopChains||0, unlit:HS[0].m.material.type, mats:new Set(HS.map(H=>H.m.material)).size}:null; }, hoop:()=>{ const H=state.level&&state.level._hoop; return H?{x:H.x, y:+H.y.toFixed(2), y0:H.y0, hits:H.hits, n:state.hoops||0, punch:+H.punch.toFixed(3), spin:+H.m.rotation.z.toFixed(2), t:+H.t.toFixed(2), carX:car.pos.x, carY:car.pos.y, unlit:H.m.material.type}:null; }, ambient:()=>({fanSpin:(state.level&&state.level._fans&&state.level._fans[0])?+state.level._fans[0].blades.rotation.y.toFixed(2):null, sawT:(state.level&&state.level._saw)?+state.level._saw.t.toFixed(2):null, kickT:(state.level&&state.level._kick)?+state.level._kick.t.toFixed(2):null, popT:(state.level&&state.level._pop)?+state.level._pop.t.toFixed(2):null, hoopT:(state.level&&state.level._hoop)?+state.level._hoop.t.toFixed(2):null, mode:state.mode, bonks:state.bonks||0}), sawStripeColor:()=>{ const S=state.level&&state.level._saw; if(!S) return null; const st=S.pv.children[0]; return {unlit:st.material.type, blocks:st.geometry.attributes.position.count}; }, seesaw:()=>{ const S=state.level&&state.level._saw; return S?{x:+S.x.toFixed(1), y:S.y, ang:+S.ang.toFixed(3), state:S.state, hits:S.hits, slams:S.slams, n:state.seesaws||0, carX:car.pos.x, air:!car.grounded, ei:+sawMat.emissiveIntensity.toFixed(2)}:null; }, _flatRuns:(mn)=>flatRuns(state.level,state.framesData,mn).map(r=>[+r.a.pos.x.toFixed(1),+r.b.pos.x.toFixed(1),+r.a.pos.y.toFixed(1)]), _steep:()=>{ const o=[]; for(const sg of state.framesData.segs) for(const f of sg.frames) if(f.normal.y<0.5) o.push(Math.round(f.pos.x)); return [...new Set(o)]; }, popRamp:()=>{ const Q=state.level&&state.level._pop; return Q?{x:Q.x, y:Q.y, h:+Q.h.toFixed(3), t:Q.t, hits:Q.hits, maxPops:Q.maxPops, rolls:Q.rolls, pops:state.pops||0, carX:car.pos.x, air:!car.grounded, scaleY:Q.m.scale.y}:null; }, setPopPhase:(t)=>{ const Q=state.level&&state.level._pop; if(Q){ Q.t=t; Q.cool=0; Q.aH=0; } }, popAssistInfo:()=>{ const Q=state.level&&state.level._pop; return Q?{assist:Q.assist, aH:+Q.aH.toFixed(3), holds:Q.holds, h:+Q.h.toFixed(3)}:null; }, trail:()=>trailInfo(), popHeight,
   hud:()=>{ const r=id=>{ const e=document.getElementById(id); if(!e||getComputedStyle(e).display==='none') return null; const b=e.getBoundingClientRect(); return {x:b.left,y:b.top,w:b.width,h:b.height}; }; return {score:r('scorePanel'), mult:r('multPanel'), grade:r('gradePanel'), tilt:r('tiltToggle'), music:r('musicBtn'), pause:r('pauseBtn'), fuel:r('fuelWrap'), combo:r('combo'), starHud:r('starHud'), comboShown:comboEl.classList.contains('show'), fuelCls:fuelWrapEl.className}; },
   forceCombo:(n)=>{ state.combo=n; state.mult=n; state.comboTimer=3; punchCombo(); updateHUD(); }, prewarms:()=>_prewarmN, programs:()=>renderer.info.programs.length, pTex:()=>!!pMat.map, staticFrozen:()=>{ let n=0,f=0; for(const G of [trackGroup,decorGroup]) G.traverse(o=>{ if(o!==G){ n++; if(!o.matrixAutoUpdate) f++; } }); return {n,f}; },
   kicker:()=>{ const K=state.level&&state.level._kick; return K?{x:K.x, cx:K.cx, amp:K.amp, hits:K.hits, kicks:state.kicks||0, carX:car.pos.x, air:!car.grounded}:null; }, seaFx:()=>({fog:seaMat.fog, ei:seaMat.emissiveIntensity, embers:seaState.embers||0, caps:seaState.caps||0}), calls:()=>renderer.info.render.calls,
