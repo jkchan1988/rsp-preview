@@ -74,6 +74,22 @@ button.menu.gold{background:linear-gradient(180deg,#ffd76a,#e09020);color:#1a100
 .lvlBtn small{font-size:10px;opacity:.7;font-weight:600}
 .lvlBtn:disabled{opacity:.35}
 .gradeHero{font-size:clamp(48px,11vw,88px);font-weight:900;line-height:1;margin:8px 0 4px;letter-spacing:4px;filter:drop-shadow(0 4px 16px rgba(255,180,40,.45))}
+/* v28: results-card hoop medal (CSS-drawn ring in the level's own hoop palette) + stars that pop in one by one */
+.gradeHero .st{display:inline-block;animation:starPop .5s cubic-bezier(.3,1.6,.5,1) both}
+.gradeHero .st.on{color:#ffd24a;text-shadow:0 0 18px rgba(255,200,60,.9),0 2px 0 #b06a00}
+.gradeHero .st.off{opacity:.35}
+@keyframes starPop{0%{opacity:0;transform:scale(.2) rotate(-40deg)}70%{opacity:1;transform:scale(1.25) rotate(8deg)}100%{transform:scale(1) rotate(0)}}
+.hoopMedal{display:inline-flex;align-items:center;gap:12px;margin:2px auto 10px;padding:8px 16px 8px 10px;border-radius:999px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.16);font-weight:900;font-size:clamp(14px,2.6vw,19px);letter-spacing:.04em;animation:medalIn .6s .55s cubic-bezier(.3,1.5,.5,1) both;position:relative;overflow:hidden}
+.hoopMedal .ring{width:44px;height:44px;border-radius:50%;flex:none;-webkit-mask:radial-gradient(circle closest-side,transparent 50%,#000 55%,#000 91%,transparent 96%);mask:radial-gradient(circle closest-side,transparent 50%,#000 55%,#000 91%,transparent 96%);animation:ringSpin 3.2s linear infinite;filter:drop-shadow(0 0 6px rgba(255,255,255,.5))}
+.hoopMedal.miss .ring{filter:grayscale(.85) brightness(.75);animation:none}
+.hoopMedal.miss{opacity:.8;font-weight:700}
+.hoopMedal.new::after,.hoopMedal.chain::after{content:'';position:absolute;inset:0;background:linear-gradient(105deg,transparent 35%,rgba(255,255,255,.45) 50%,transparent 65%);transform:translateX(-120%);animation:medalShine 1.6s 1.1s ease-out 2}
+.hoopMedal .tag{font-size:.7em;background:linear-gradient(180deg,#ffd76a,#e09020);color:#1a1000;border-radius:8px;padding:2px 7px}
+@keyframes medalIn{0%{opacity:0;transform:translateY(14px) scale(.6)}100%{opacity:1;transform:none}}
+@keyframes ringSpin{to{transform:rotate(360deg)}}
+@keyframes medalShine{to{transform:translateX(120%)}}
+@media (max-height:500px){.card{padding:14px 20px}.card h1{margin-bottom:0}.gradeHero{font-size:48px;margin:2px 0}.hoopMedal{margin:0 auto 6px;padding:4px 12px 4px 6px;font-size:14px;gap:8px}.hoopMedal .ring{width:30px;height:30px}.card .sub{margin-bottom:8px;font-size:12px}.oneMore{margin-top:0;font-size:15px}.btnRow{margin-top:6px}button.menu{padding:10px 18px}} /* v28: iPhone landscape keeps the buttons on screen with the medal added */
+@media (prefers-reduced-motion:reduce){.gradeHero .st,.hoopMedal,.hoopMedal .ring,.hoopMedal::after{animation:none!important}}
 .oneMore{font-size:clamp(15px,2.8vw,20px);font-weight:800;color:#9cf;margin-top:4px;letter-spacing:.04em}
 #starHud{position:fixed;left:calc(env(safe-area-inset-left,10px) + 12px);top:calc(env(safe-area-inset-top,8px) + 56px);z-index:10;pointer-events:none;font-weight:800;font-size:clamp(12px,2.2vw,16px);background:rgba(0,0,0,.4);border-radius:10px;padding:4px 10px;display:none}
 #starHud .coin{color:#ffd24a}#starHud .gold{color:#ffcf3a;text-shadow:0 0 8px rgba(255,200,40,.9)}
@@ -590,6 +606,42 @@ function addSetPieces(){ // v9: research set pieces — kid-safe bounce pad + po
     [{x:55,y:8},{x:120,y:28},{x:270,y:12}],
     [{x:100,y:6,kind:'balloon'},{x:190,y:8,kind:'billboard'},{x:340,y:6,kind:'spinner'},{x:380,y:4,kind:'balloon'}]));
 })();
+/* v28 LEVEL LENGTH (Jason, Nov 1: "make the level length similar" to the original). Research (research/level-length.md):
+   a clean single-level run in the original Stunt Paradise takes about 30 s (a 10-level speedrun video is 5:08 including
+   menus; a 100% video's chapters run 49–109 s per level for levels 1–10 including star hunting; reviewers say "just over
+   a minute or less"). v27 levels took only 6–15 s at full gas, so each level gets a SECOND ACT bolted onto its finish
+   straight: the old finish becomes a checkpoint, then a themed run of proven full-gas pieces (jumps, humps, loops) with
+   coins, smashables, boost pads and a new finish straight. Everything placed before the old end keeps its x, and the
+   auto-placed set pieces only look at the old part of the track (level._origEnd), so hoops, see-saws, gates etc. stay put. */
+const ACTS = [ // tokens: J<h> jump crest h · H<h> hump h · O<r> loop r · F<len> flat
+  ['F14','J10','F18','H8','F16','J14','F22','O10','F16','J12','F16','H9','F16','J10'],          // 1 Desert Dawn
+  ['F14','H8','F16','J12','F18','H10','F16','J14','F18','H9','F16','J10','F16','H8'],            // 2 Beach Hop
+  ['F14','J12','F22','O10','F16','J10','F18','H9','F16','J14','F16','H8','F16','J12'],          // 3 Industrial Gap
+  ['F22','O11','F16','J12','F22','O12','F16','H9','F16','J14','F22','O10','F16','J10'],         // 4 Cyber Loop
+  ['F14','H9','H11','H13','F16','J12','F16','H10','H12','F16','J14','F16','H9','H11','F16','H10'], // 5 Candy Waves
+  ['F14','J12','F18','H9','F22','O11','F16','J14','F18','H10','F16','J12','F16','H8','F16','J10'], // 6 Ice Bridge
+  ['F14','J14','F22','O12','F16','J12','F16','H10','F16','J16','F22','O11','F16','J12','F16','H9'], // 7 Volcano Ring
+  ['F14','J12','F22','O11','F16','H9','F16','J14','F22','O12','F16','J12','F16','H10','F16','J14','F18','H9','F16','J12'] // 8 Paradise Finale
+];
+[1,2,2,1,2,1,1,0].forEach((k,i)=>{ for(let j=0;j<k;j++) ACTS[i].push('F16', j%2?'H10':'J12', 'F16', j%2?'J10':'H9'); }); // tuned so full-gas runs land in the original's ~25–35 s band
+function extendLevels(){
+  const kinds=['barrel','crate','cone','tire'], propK=['balloon','spinner','billboard'];
+  LEVELS.forEach((lv,i)=>{
+    const seg=lv.segments[lv.segments.length-1], end=seg[seg.length-1]; let x=end.x; const y=end.y;
+    lv._origEnd = x; lv.checkpoints.push({x:x-14, y:y+1});
+    const pts=[]; let n=0;
+    for(const tk of ACTS[i]){ const k=tk[0], v=+tk.slice(1); n++;
+      if(k==='F'){ pts.push(flat(x,y,v)); if(n%4===2) lv.smashables.push({x:x+v*0.6, y:y+1, kind:kinds[(i+n)%4]}); x+=v; }
+      else if(k==='J'){ const up=v*2, dn=v*1.7; pts.push(ramp(x,y,up,v), down(x+up,y+v,dn,v)); lv.stars.push({x:x+up*0.85,y:y+v+3},{x:x+up+dn*0.5,y:y+v+5}); x+=up+dn; }
+      else if(k==='H'){ const L2=v*3.6; pts.push(hump(x,y,L2,v)); lv.stars.push({x:x+L2*0.5,y:y+v+3}); x+=L2; }
+      else if(k==='O'){ pts.push(loop(x,y+v,v,0,Math.PI*2,48), flat(x,y,14)); lv.stars.push({x:x,y:y+2*v+1}); lv.boostPads.push({x:x-12,y:y+1}); x+=14; }
+      if(n%6===3) lv.props.push({x:x, y:y+4, kind:propK[(i+n)%3]});
+    }
+    pts.push(flat(x,y,36)); lv.stars.push({x:x+16,y:y+3});
+    lv.segments[lv.segments.length-1] = join(seg, ...pts);
+  });
+}
+extendLevels();
 addSetPieces();
 
 /* ===== Three.js setup ===== */
@@ -1393,7 +1445,7 @@ function buildBridge(level, framesData){
   for(const seg of segs){ // longest upright, level run (skips loops, ramps, the start line)
     let run = null;
     for(const f of seg.frames){
-      const ok = f.normal.y > 0.985 && f.tangent.x > 0.97 && seg.s0 + f.s > 24 && !avoid.some(x=>Math.abs(f.pos.x-x)<5);
+      const ok = !(level._origEnd && f.pos.x > level._origEnd) && f.normal.y > 0.985 && f.tangent.x > 0.97 && seg.s0 + f.s > 24 && !avoid.some(x=>Math.abs(f.pos.x-x)<5);
       if(ok){ if(!run) run = { seg, a:f, b:f }; else run.b = f; }
       if(!ok || f === seg.frames[seg.frames.length-1]){ if(run && (!best || run.b.pos.x-run.a.pos.x > best.b.pos.x-best.a.pos.x)) best = run; if(!ok) run = null; }
     }
@@ -1872,7 +1924,7 @@ const ghostMesh = (()=>{ const gs=[]; const add=(g,x,y,z)=>{ g.translate(x,y,z);
   const m=new THREE.Mesh(mergeGeometries(gs), ghostMat); const g=new THREE.Group(); g.add(m); g.scale.setScalar(0.85); g.visible=false; g.renderOrder=3; return g; })();
 scene.add(ghostMesh);
 const ghost = { rec:null, recValid:false, play:null, t:0, steps:0, visible:false, newBest:false, bestT:null };
-function ghostKey(i){ return 'rsp.v11.ghost.'+i; }
+function ghostKey(i){ return 'rsp.v28.ghost.'+i; /* v28: levels got longer, so old short-track ghosts are dropped */ }
 function ghostLoad(i){ try{ const r=localStorage.getItem(ghostKey(i)); if(!r) return null; const o=JSON.parse(r); return (o && o.d && o.d.length>=14) ? o : null; }catch(e){ return null; } }
 function ghostStart(idx, endless, fromCp){
   ghost.t=0; ghost.steps=0; ghost.newBest=false;
@@ -2289,6 +2341,24 @@ function failRun(reason){
   document.getElementById('btnQuit2').onclick=()=>{ audio.ui(); showTitle(); };
 }
 
+/* v28: results-card hoop medal. Every level has a hoop now, so the grade card shows a spinning ring badge drawn in that
+   level's own hoop colours (conic-gradient stripes masked into a ring): caught hoops count up, a first catch gets a
+   NEW! tag and a shine sweep, the L8 chain gets CHAIN!, and a miss shows a greyed ring with a kid-friendly hint.
+   Best hoops per level are saved with the level's high score (localStorage only, no data leaves the device). */
+let hoopPrevBest = 0;
+function hoopGotNow(){ const HS = state.level && state.level._hoops; return HS ? HS.filter(H=>H.done).length : 0; }
+function _hx(h){ return '#'+h.toString(16).padStart(6,'0'); }
+function hoopMedal(){
+  const L = state.level, HS = L && L._hoops; if(!HS || !HS.length) return '';
+  const th = HOOP_THEMES[L.hoopTheme || 'candy'], a = _hx(th.a), b = _hx(th.b), rim = _hx(th.rim);
+  const got = hoopGotNow(), total = HS.length, chain = total > 1 && (state.hoopChains||0) > 0, isNew = got > hoopPrevBest;
+  const name = (L._hoopLabel||'HOOP').replace(/!$/,'');
+  const bg = 'repeating-conic-gradient('+a+' 0 30deg,'+b+' 30deg 60deg)';
+  const txt = got ? (total>1 ? name+'S '+got+'/'+total : name+' ✓') : (total>1 ? name+'S 0/'+total+' · full gas on the big jump!' : name+' missed · full gas on the big jump!');
+  const tag = chain ? '<span class="tag">CHAIN!</span>' : (isNew && got ? '<span class="tag">NEW!</span>' : '');
+  return '<div class="hoopMedal'+(got?'':' miss')+(isNew&&got?' new':'')+(chain?' chain':'')+'" data-got="'+got+'" data-total="'+total+'" data-best="'+Math.max(hoopPrevBest,got)+'"><span class="ring" style="background:'+bg+';box-shadow:inset 0 0 0 2px '+rim+'"></span><span>'+txt+'</span>'+tag+'</div>';
+}
+function starSpans(n){ let o=''; for(let i=0;i<3;i++) o += '<span class="st '+(i<n?'on':'off')+'" style="animation-delay:'+(0.12+i*0.16).toFixed(2)+'s">'+(i<n?'★':'☆')+'</span>'; return o; }
 function winRun(){
   state.mode='grade';
   audio.win(); haptic(20);
@@ -2301,8 +2371,9 @@ function winRun(){
     const prevScore = (prev && typeof prev==='object') ? (prev.score||0) : (prev||0);
     const prevStars = (prev && typeof prev==='object') ? (prev.stars||0) : 0;
     const prevGold = !!(prev && typeof prev==='object' && prev.gold), prevCoins = (prev && typeof prev==='object') ? (prev.coins||0) : 0;
-    if(state.score>prevScore || starGrade>prevStars || (state.goldGot && !prevGold) || (state.coins||0)>prevCoins || prev==null){
-      scores.levels[state.levelIndex]={score:Math.max(state.score,prevScore), stars:Math.max(starGrade,prevStars), gold:prevGold||!!state.goldGot, coins:Math.max(prevCoins, state.coins||0)};
+    const prevHoops = (prev && typeof prev==='object') ? (prev.hoops||0) : 0; hoopPrevBest = prevHoops;
+    if(state.score>prevScore || starGrade>prevStars || (state.goldGot && !prevGold) || (state.coins||0)>prevCoins || hoopGotNow()>prevHoops || prev==null){
+      scores.levels[state.levelIndex]={score:Math.max(state.score,prevScore), stars:Math.max(starGrade,prevStars), gold:prevGold||!!state.goldGot, coins:Math.max(prevCoins, state.coins||0), hoops:Math.max(prevHoops, hoopGotNow())};
       saveScores(scores);
     }
   } else {
@@ -2312,9 +2383,10 @@ function winRun(){
   const timeTxt = state.endless ? '' : (ghost.newBest ? (ghost.bestT!=null ? ' · ⏱ NEW BEST TIME '+ghost.t.toFixed(1)+'s! (was '+ghost.bestT.toFixed(1)+'s)' : ' · ⏱ '+ghost.t.toFixed(1)+'s — your ghost will race you next time') : (ghost.recValid && ghost.bestT!=null ? ' · ⏱ '+ghost.t.toFixed(1)+'s (best '+ghost.bestT.toFixed(1)+'s — beat your ghost!)' : ''));
   const next = state.levelIndex+1;
   const hasNext = !state.endless && next < LEVELS.length;
+  const hoopMedalHTML = state.endless ? '' : hoopMedal(); hoopPrevBest = 0;
   finaleCard = ()=>{
   document.getElementById('card').innerHTML='<h1>'+(state.endless?'Distance!':LEVELS[state.levelIndex].name)+'</h1>'+
-    '<div class="gradeHero">'+state.grade+'</div>'+
+    '<div class="gradeHero">'+starSpans(state.starGrade)+'</div>'+hoopMedalHTML+
     '<p class="sub">Score '+state.score.toLocaleString()+' · Stars '+state.starsGot+'/'+state.starsTotal+
     ' · Flips '+state.flips+' (↑'+state.frontflips+' ↓'+state.backflips+') · Smash '+state.smashes+' · Clean '+state.cleanLands+' · Perfect '+(state.perfectLands||0)+
     (state.level&&state.level._coins?' · Coins '+(state.coins||0)+'/'+state.level._coins.n:'')+(state.level&&state.level.gold?(state.goldGot?' · ✪ GOLD STAR!':' · ✧ gold star hidden — try the ROCKET'):'')+timeTxt+'</p>'+
@@ -3104,7 +3176,7 @@ requestAnimationFrame(frame);
 
 // Expose for smoke tests
 window.__RSP = {
-  version:27, hoopTheme:()=>{ const L=state.level, H=L&&L._hoop; return H?{label:L._hoopLabel, flames:!!H.fl, flameScale:H.fl?+H.fl.scale.x.toFixed(3):null, flameOpacity:+hoopFlameMat.opacity.toFixed(3), flameUnlit:hoopFlameMat.type==='MeshBasicMaterial', tick:H.tick, rotZ:+H.m.rotation.z.toFixed(3), verts:H.m.geometry.attributes.position.count}:null; }, hoops:()=>{ const HS=state.level&&state.level._hoops; return HS&&HS.length?{n:HS.length, list:HS.map(H=>({x:H.x, y:+H.y.toFixed(2), hits:H.hits, done:H.done, punch:+H.punch.toFixed(3)})), total:state.hoops||0, chain:state.hoopChain||0, chains:state.hoopChains||0, unlit:HS[0].m.material.type, mats:new Set(HS.map(H=>H.m.material)).size}:null; }, hoop:()=>{ const H=state.level&&state.level._hoop; return H?{x:H.x, y:+H.y.toFixed(2), y0:H.y0, hits:H.hits, n:state.hoops||0, punch:+H.punch.toFixed(3), spin:+H.m.rotation.z.toFixed(2), t:+H.t.toFixed(2), carX:car.pos.x, carY:car.pos.y, unlit:H.m.material.type}:null; }, ambient:()=>({fanSpin:(state.level&&state.level._fans&&state.level._fans[0])?+state.level._fans[0].blades.rotation.y.toFixed(2):null, sawT:(state.level&&state.level._saw)?+state.level._saw.t.toFixed(2):null, kickT:(state.level&&state.level._kick)?+state.level._kick.t.toFixed(2):null, popT:(state.level&&state.level._pop)?+state.level._pop.t.toFixed(2):null, hoopT:(state.level&&state.level._hoop)?+state.level._hoop.t.toFixed(2):null, mode:state.mode, bonks:state.bonks||0}), sawStripeColor:()=>{ const S=state.level&&state.level._saw; if(!S) return null; const st=S.pv.children[0]; return {unlit:st.material.type, blocks:st.geometry.attributes.position.count}; }, seesaw:()=>{ const S=state.level&&state.level._saw; return S?{x:+S.x.toFixed(1), y:S.y, ang:+S.ang.toFixed(3), state:S.state, hits:S.hits, slams:S.slams, n:state.seesaws||0, carX:car.pos.x, air:!car.grounded, ei:+sawMat.emissiveIntensity.toFixed(2)}:null; }, _flatRuns:(mn)=>flatRuns(state.level,state.framesData,mn).map(r=>[+r.a.pos.x.toFixed(1),+r.b.pos.x.toFixed(1),+r.a.pos.y.toFixed(1)]), _steep:()=>{ const o=[]; for(const sg of state.framesData.segs) for(const f of sg.frames) if(f.normal.y<0.5) o.push(Math.round(f.pos.x)); return [...new Set(o)]; }, popRamp:()=>{ const Q=state.level&&state.level._pop; return Q?{x:Q.x, y:Q.y, h:+Q.h.toFixed(3), t:Q.t, hits:Q.hits, maxPops:Q.maxPops, rolls:Q.rolls, pops:state.pops||0, carX:car.pos.x, air:!car.grounded, scaleY:Q.m.scale.y}:null; }, setPopPhase:(t)=>{ const Q=state.level&&state.level._pop; if(Q){ Q.t=t; Q.cool=0; Q.aH=0; } }, popAssistInfo:()=>{ const Q=state.level&&state.level._pop; return Q?{assist:Q.assist, aH:+Q.aH.toFixed(3), holds:Q.holds, h:+Q.h.toFixed(3)}:null; }, trail:()=>trailInfo(), popHeight,
+  version:28, medal:()=>{ const e=document.querySelector('#card .hoopMedal'); if(!e) return null; const r=e.querySelector('.ring'), cs=r?getComputedStyle(r):null; return {text:e.textContent, got:+e.dataset.got, total:+e.dataset.total, best:+e.dataset.best, isNew:e.classList.contains('new'), chain:e.classList.contains('chain'), bg:cs?cs.backgroundImage:'', anim:cs?cs.animationName:'', stars:[...document.querySelectorAll('#card .gradeHero .st')].map(x=>getComputedStyle(x).animationName), saved:(scores.levels[state.levelIndex]&&scores.levels[state.levelIndex].hoops)||0}; }, hoopTheme:()=>{ const L=state.level, H=L&&L._hoop; return H?{label:L._hoopLabel, flames:!!H.fl, flameScale:H.fl?+H.fl.scale.x.toFixed(3):null, flameOpacity:+hoopFlameMat.opacity.toFixed(3), flameUnlit:hoopFlameMat.type==='MeshBasicMaterial', tick:H.tick, rotZ:+H.m.rotation.z.toFixed(3), verts:H.m.geometry.attributes.position.count}:null; }, hoops:()=>{ const HS=state.level&&state.level._hoops; return HS&&HS.length?{n:HS.length, list:HS.map(H=>({x:H.x, y:+H.y.toFixed(2), hits:H.hits, done:H.done, punch:+H.punch.toFixed(3)})), total:state.hoops||0, chain:state.hoopChain||0, chains:state.hoopChains||0, unlit:HS[0].m.material.type, mats:new Set(HS.map(H=>H.m.material)).size}:null; }, hoop:()=>{ const H=state.level&&state.level._hoop; return H?{x:H.x, y:+H.y.toFixed(2), y0:H.y0, hits:H.hits, n:state.hoops||0, punch:+H.punch.toFixed(3), spin:+H.m.rotation.z.toFixed(2), t:+H.t.toFixed(2), carX:car.pos.x, carY:car.pos.y, unlit:H.m.material.type}:null; }, ambient:()=>({fanSpin:(state.level&&state.level._fans&&state.level._fans[0])?+state.level._fans[0].blades.rotation.y.toFixed(2):null, sawT:(state.level&&state.level._saw)?+state.level._saw.t.toFixed(2):null, kickT:(state.level&&state.level._kick)?+state.level._kick.t.toFixed(2):null, popT:(state.level&&state.level._pop)?+state.level._pop.t.toFixed(2):null, hoopT:(state.level&&state.level._hoop)?+state.level._hoop.t.toFixed(2):null, mode:state.mode, bonks:state.bonks||0}), sawStripeColor:()=>{ const S=state.level&&state.level._saw; if(!S) return null; const st=S.pv.children[0]; return {unlit:st.material.type, blocks:st.geometry.attributes.position.count}; }, seesaw:()=>{ const S=state.level&&state.level._saw; return S?{x:+S.x.toFixed(1), y:S.y, ang:+S.ang.toFixed(3), state:S.state, hits:S.hits, slams:S.slams, n:state.seesaws||0, carX:car.pos.x, air:!car.grounded, ei:+sawMat.emissiveIntensity.toFixed(2)}:null; }, _flatRuns:(mn)=>flatRuns(state.level,state.framesData,mn).map(r=>[+r.a.pos.x.toFixed(1),+r.b.pos.x.toFixed(1),+r.a.pos.y.toFixed(1)]), _steep:()=>{ const o=[]; for(const sg of state.framesData.segs) for(const f of sg.frames) if(f.normal.y<0.5) o.push(Math.round(f.pos.x)); return [...new Set(o)]; }, popRamp:()=>{ const Q=state.level&&state.level._pop; return Q?{x:Q.x, y:Q.y, h:+Q.h.toFixed(3), t:Q.t, hits:Q.hits, maxPops:Q.maxPops, rolls:Q.rolls, pops:state.pops||0, carX:car.pos.x, air:!car.grounded, scaleY:Q.m.scale.y}:null; }, setPopPhase:(t)=>{ const Q=state.level&&state.level._pop; if(Q){ Q.t=t; Q.cool=0; Q.aH=0; } }, popAssistInfo:()=>{ const Q=state.level&&state.level._pop; return Q?{assist:Q.assist, aH:+Q.aH.toFixed(3), holds:Q.holds, h:+Q.h.toFixed(3)}:null; }, trail:()=>trailInfo(), popHeight,
   hud:()=>{ const r=id=>{ const e=document.getElementById(id); if(!e||getComputedStyle(e).display==='none') return null; const b=e.getBoundingClientRect(); return {x:b.left,y:b.top,w:b.width,h:b.height}; }; return {score:r('scorePanel'), mult:r('multPanel'), grade:r('gradePanel'), tilt:r('tiltToggle'), music:r('musicBtn'), pause:r('pauseBtn'), fuel:r('fuelWrap'), combo:r('combo'), starHud:r('starHud'), comboShown:comboEl.classList.contains('show'), fuelCls:fuelWrapEl.className}; },
   forceCombo:(n)=>{ state.combo=n; state.mult=n; state.comboTimer=3; punchCombo(); updateHUD(); }, prewarms:()=>_prewarmN, programs:()=>renderer.info.programs.length, pTex:()=>!!pMat.map, staticFrozen:()=>{ let n=0,f=0; for(const G of [trackGroup,decorGroup]) G.traverse(o=>{ if(o!==G){ n++; if(!o.matrixAutoUpdate) f++; } }); return {n,f}; },
   kicker:()=>{ const K=state.level&&state.level._kick; return K?{x:K.x, cx:K.cx, amp:K.amp, hits:K.hits, kicks:state.kicks||0, carX:car.pos.x, air:!car.grounded}:null; }, seaFx:()=>({fog:seaMat.fog, ei:seaMat.emissiveIntensity, embers:seaState.embers||0, caps:seaState.caps||0}), calls:()=>renderer.info.render.calls,
