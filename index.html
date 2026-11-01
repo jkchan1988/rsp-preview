@@ -1677,7 +1677,7 @@ function buildPopRamp(level, framesData){
   // the pad sits in the back part of a flat run so the car has settled onto its wheels (not still flying off the last hump)
   const padX = r => Math.min(r.b.pos.x - 2.5, r.a.pos.x + Math.max(6, (r.b.pos.x - r.a.pos.x)*0.7));
   const clear = (r, ahead) => { const x0 = padX(r) - 3, x1 = padX(r) + 3; return x0 > 40 && !steepX.some(x => x > x0-10 && x < x1+ahead) && !(g0 && g0.bx > x0-8 && g0.bx < x1+8) && !(D && D.tx > x0-8 && D.tx < x1+8) && !(K && Math.abs(K.cx - (x0+x1)/2) < 16) && !(Lv && Lv.x0 !== undefined && x1 > Lv.x0-6 && x0 < Lv.x1+6); };
-  let run = null; for(const [mn, ahead] of [[12,80],[9,70],[8,60],[7,50]]){ run = flatRuns(level, framesData, mn).find(r => clear(r, ahead)); if(run) break; } if(!run) return;
+  let run = null; const oe = level._origEnd; for(const lim of [oe, 0]){ level._origEnd = lim; for(const [mn, ahead] of [[12,80],[9,70],[8,60],[7,50]]){ run = flatRuns(level, framesData, mn).find(r => clear(r, ahead)); if(run) break; } if(run) break; } level._origEnd = oe; if(!run) return; // v29: original part first, else the new second act
   const cx = padX(run), W = TRACK_W*0.8;
   const P = [], cy = new THREE.Color(0x30d0ff), wht = new THREE.Color(0xf4fbff), dk = new THREE.Color(0x203048), org = new THREE.Color(0xff8a2a);
   const wedge = new THREE.BufferGeometry(); // 3.2 m wedge, 1.3 m tall at the front (+x); origin at the base so scale.y raises it
