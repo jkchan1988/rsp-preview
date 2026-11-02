@@ -2145,6 +2145,7 @@ function applyTheme(key){
   setSeaTheme(key); // v17 animated sea / lava sea
   setSkyTheme(key, th); // v16: gradient sky + matching fog + cloud tint
   setCarEnv(key, th); // v31: car reflects this world's sky
+  setDustTheme(th); // v32: landing dust + shockwave take this world's ground colour
   const LT = WORLD_LIGHT[key] || WORLD_LIGHT.desert; // v15: per-world light mood (intensity + fog depth)
   scene.fog.near = LT.fn*LITE.fogK; scene.fog.far = LT.ff*LITE.fogK; state.fogBase = [LT.fn, LT.ff];
   amb.color.set(th.amb); amb.intensity = LT.amb;
@@ -2999,7 +3000,7 @@ function physicsStep(dt){
           state.landStreak = 0; // v14: a sloppy landing ends the streak
           addScore(30, 'LAND');
         }
-        landBurst(car.pos);
+        landBurst(car.pos, landFr, impact, perfectLand ? 2 : (clean ? 1 : 0));
         car.airTime=0;
         orientCar(landFr, 0);
       } else if(Math.abs(car.pitch)>2.2){
@@ -3211,12 +3212,65 @@ function smashBurst(pos, kind){
       r, g+Math.random()*0.15, b);
   }
 }
-function landBurst(pos){
-  for(let i=0;i<18;i++){
-    spawnParticle(pos.x, pos.y, pos.z,
-      (Math.random()-0.5)*12, Math.random()*6, (Math.random()-0.5)*12,
-      0.35, 0.9, 0.9, 1.0);
+/* v32 VISUAL: TOUCHDOWN SHOCKWAVES + THEMED DUST. Before, every landing (soft hop or huge jump) puffed the same 18 grey-blue
+   dots. Now a landing paints a soft ring that races out across the track surface (easeOutCubic, fading as it grows), sized
+   by how hard you hit; a PERFECT landing gets a gold ring plus a fast white inner ring, a sloppy one a small dull ring. The
+   dust is tinted from the world's own ground colour (sand in Desert, snow in Ice, ash in Volcano) and sprays out sideways
+   and backwards like real tyre dust, more of it for bigger hits. Pool of 4 ring meshes made once: no allocations per landing
+   or per frame, one shared texture/geometry, all 4 materials share a single shader program. Rings freeze while paused. */
+var _dustRGB = [0.9,0.9,1.0];
+function setDustTheme(th){ if(!_shockWhite) return; const c=new THREE.Color(th.ground).lerp(_shockWhite, 0.45); _dustRGB[0]=c.r; _dustRGB[1]=c.g; _dustRGB[2]=c.b; _shockTint.setRGB(c.r,c.g,c.b); }
+var _shockWhite = new THREE.Color(1,1,1), _shockTint = new THREE.Color(0.9,0.9,1), _shockGold = new THREE.Color(0xffd24a), _shockDull = new THREE.Color(0x8a8a8a);
+const _swCv=document.createElement('canvas'); _swCv.width=_swCv.height=128;
+{ const x=_swCv.getContext('2d'); const g=x.createRadialGradient(64,64,0,64,64,63);
+  g.addColorStop(0,'rgba(255,255,255,0)'); g.addColorStop(0.55,'rgba(255,255,255,0)'); g.addColorStop(0.78,'rgba(255,255,255,0.35)');
+  g.addColorStop(0.9,'rgba(255,255,255,1)'); g.addColorStop(0.95,'rgba(255,255,255,0.55)'); g.addColorStop(1,'rgba(255,255,255,0)');
+  x.fillStyle=g; x.fillRect(0,0,128,128); }
+const _swTex = new THREE.CanvasTexture(_swCv), _swGeo = new THREE.PlaneGeometry(1,1);
+const SHOCKS = []; const _swStat = { spawned:0, perfect:0, lastR1:0, lastColor:'', maxActive:0 };
+for(let i=0;i<4;i++){
+  const m = new THREE.Mesh(_swGeo, new THREE.MeshBasicMaterial({map:_swTex, transparent:true, depthWrite:false, opacity:0, polygonOffset:true, polygonOffsetFactor:-3, color:0xffffff}));
+  m.renderOrder=3; m.visible=false; m.matrixAutoUpdate=true; scene.add(m);
+  SHOCKS.push({m, t:1, dur:0.42, r0:0.6, r1:3, a:0.8, delay:0});
+}
+let _swNext=0;
+function spawnShock(fr, r1, col, a, dur, delay){
+  const S = SHOCKS[_swNext]; _swNext=(_swNext+1)%SHOCKS.length;
+  _shM.makeBasis(fr.tangent, _shB.copy(fr.binormal).negate(), fr.normal); S.m.quaternion.setFromRotationMatrix(_shM);
+  S.m.position.copy(fr.pos).addScaledVector(fr.normal, 0.05);
+  S.m.material.color.copy(col); S.t=0; S.dur=dur; S.r0=0.5; S.r1=r1; S.a=a; S.delay=delay; S.m.visible=false; S.m.material.opacity=0;
+  _swStat.spawned++; _swStat.lastR1=+r1.toFixed(2); _swStat.lastColor=col.getHexString();
+}
+function updateShocks(dt){
+  const run = state.mode==='play' || state.mode==='grade' || state.mode==='fail';
+  const hide = !(run || state.mode==='pause' || state.mode==='paused');
+  let act=0;
+  for(const S of SHOCKS){
+    if(S.t>=1){ if(S.m.visible) S.m.visible=false; continue; }
+    if(hide){ S.t=1; S.m.visible=false; continue; }
+    if(run){ if(S.delay>0){ S.delay-=dt; if(S.delay>0) continue; } S.t=Math.min(1, S.t + dt/S.dur); }
+    if(S.delay>0) continue;
+    act++;
+    const e = 1-Math.pow(1-S.t,3), r = S.r0 + (S.r1-S.r0)*e;
+    S.m.scale.set(r*2*1.18, r*2, 1); // slightly longer along the track: reads as speed
+    S.m.material.opacity = S.a*Math.pow(1-S.t,1.4);
+    S.m.visible = S.t<1;
   }
+  if(act>_swStat.maxActive) _swStat.maxActive=act;
+}
+function landBurst(pos, fr, impact, q){ // q: 2 perfect, 1 clean, 0 sloppy
+  impact = impact||0;
+  const n = 14 + Math.min(16, Math.floor(impact/2.5)), R=_dustRGB[0], G=_dustRGB[1], B=_dustRGB[2];
+  const tx = fr ? fr.tangent.x : 1, ty = fr ? fr.tangent.y : 0;
+  for(let i=0;i<n;i++){
+    const side = (Math.random()<0.5?-1:1)*(4+Math.random()*7), back = -(2+Math.random()*6), up = 1+Math.random()*4.5, sh = 0.85+Math.random()*0.3;
+    spawnParticle(pos.x, pos.y-0.3, pos.z, tx*back+(Math.random()-0.5)*3, ty*back+up, side, 0.45+Math.random()*0.4, R*sh, G*sh, B*sh);
+  }
+  if(!fr) return;
+  const big = Math.min(3.5, impact/10);
+  if(q===2){ spawnShock(fr, 3.4+big, _shockGold, 0.95, 0.5, 0); spawnShock(fr, 2.0+big*0.5, _shockWhite, 0.9, 0.3, 0.06); _swStat.perfect++; }
+  else if(q===1) spawnShock(fr, 2.6+big, _shockTint, 0.85, 0.42, 0);
+  else spawnShock(fr, 1.8+big*0.6, _shockDull, 0.6, 0.35, 0);
 }
 
 /* Camera — cinematic third-person, always frames the Roadster */
@@ -3331,7 +3385,7 @@ function frame(now){
   for(const n of carVisual.nozzles){
     n.material.emissiveIntensity = (input.thrust && state.fuel>0 && state.mode==='play') ? 1.2 : 0.25;
   }
-  updateContactShadow(); updateSky(raw); updateSea(raw); updateFinale(raw);
+  updateContactShadow(); updateShocks(raw); updateSky(raw); updateSea(raw); updateFinale(raw);
   if(!document.hidden){ const _cpu1=performance.now(); renderer.render(scene, camera); cpuMeter(_cpu1-_cpu0, performance.now()-_cpu1); perfTick(now); } // v15: no GPU work while backgrounded
   requestAnimationFrame(frame);
 }
@@ -3401,7 +3455,7 @@ requestAnimationFrame(frame);
 
 // Expose for smoke tests
 window.__RSP = {
-  version:31, carScreen:()=>{ const v=carVisual.group.position.clone().project(camera); return {x:(v.x+1)/2*innerWidth, y:(1-v.y)/2*innerHeight}; }, camStat:()=>({..._camStat}), _setFovFast:(f)=>{ camera.fov=f; setFovFast(camera); }, flame:()=>({visible:carVisual.flame.visible, k:+_flameSt.k.toFixed(3), len:+carVisual.flame.scale.x.toFixed(3), peak:+_flameSt.peak.toFixed(3), frames:_flameSt.frames, blend:carVisual.flame.material.blending, rgba:carVisual.flame.geometry.attributes.color.itemSize===4, verts:carVisual.flame.geometry.attributes.position.count}), carEnv:()=>({key:state.carEnvKey||null, built:_envBuilt, cached:Object.keys(_envCache).length, mats:Object.keys(CAR_ENV_K).map(k=>({k, env:!!carVisual.mats[k].envMap, i:carVisual.mats[k].envMapIntensity, same:carVisual.mats[k].envMap===_envCache[state.carEnvKey]}))}), _lookCheck:()=>{ const c=camera.clone(); c.lookAt(camState.look); return {dq:1-Math.abs(c.quaternion.dot(camera.quaternion))}; }, _projCheck:()=>{ const a=camera.projectionMatrix.elements.slice(), ai=camera.projectionMatrixInverse.elements.slice(); const c=camera.clone(); c.updateProjectionMatrix(); let d=0, di=0; for(let i=0;i<16;i++){ d=Math.max(d,Math.abs(a[i]-c.projectionMatrix.elements[i])); di=Math.max(di,Math.abs(ai[i]-c.projectionMatrixInverse.elements[i])); } return {d, di, fov:camera.fov}; }, cpuStats, nfStats:()=>({calls:_nf.calls, scanned:_nf.scanned, skipped:_nf.skipped}), nfReset:()=>{ _nf.calls=_nf.scanned=_nf.skipped=0; }, cpuReset:()=>{ _cpuI=0; _cpuFill=0; },
+  version:32, carScreen:()=>{ const v=carVisual.group.position.clone().project(camera); return {x:(v.x+1)/2*innerWidth, y:(1-v.y)/2*innerHeight}; }, camStat:()=>({..._camStat}), _setFovFast:(f)=>{ camera.fov=f; setFovFast(camera); }, flame:()=>({visible:carVisual.flame.visible, k:+_flameSt.k.toFixed(3), len:+carVisual.flame.scale.x.toFixed(3), peak:+_flameSt.peak.toFixed(3), frames:_flameSt.frames, blend:carVisual.flame.material.blending, rgba:carVisual.flame.geometry.attributes.color.itemSize===4, verts:carVisual.flame.geometry.attributes.position.count}), carEnv:()=>({key:state.carEnvKey||null, built:_envBuilt, cached:Object.keys(_envCache).length, mats:Object.keys(CAR_ENV_K).map(k=>({k, env:!!carVisual.mats[k].envMap, i:carVisual.mats[k].envMapIntensity, same:carVisual.mats[k].envMap===_envCache[state.carEnvKey]}))}), _lookCheck:()=>{ const c=camera.clone(); c.lookAt(camState.look); return {dq:1-Math.abs(c.quaternion.dot(camera.quaternion))}; }, _projCheck:()=>{ const a=camera.projectionMatrix.elements.slice(), ai=camera.projectionMatrixInverse.elements.slice(); const c=camera.clone(); c.updateProjectionMatrix(); let d=0, di=0; for(let i=0;i<16;i++){ d=Math.max(d,Math.abs(a[i]-c.projectionMatrix.elements[i])); di=Math.max(di,Math.abs(ai[i]-c.projectionMatrixInverse.elements[i])); } return {d, di, fov:camera.fov}; }, cpuStats, nfStats:()=>({calls:_nf.calls, scanned:_nf.scanned, skipped:_nf.skipped}), nfReset:()=>{ _nf.calls=_nf.scanned=_nf.skipped=0; }, cpuReset:()=>{ _cpuI=0; _cpuFill=0; },
   liteInfo:()=>({on:LITE.on, auto:_liteAuto, recovered:_liteRecovered, locked:_liteLocked, fast:_liteFast}), _setLiteAuto:(on)=>{ setLite(on); _liteAuto=on; },
   _perfTickSim:(fps,secs)=>{ for(let k=0;k<secs;k++){ _pfT=0; _pfN=0; _pfLast=1; const fd=1000/fps; let t=1; for(let i=0;i<=fps;i++){ t+=fd; perfTick(t); } } }, _nearestCmp:()=>{ const a=nearestFrame(car.pos), b=nearestFrameRef(car.pos); return {same:a===b, x:+car.pos.x.toFixed(2), g:car.grounded}; },
   levelTiles:()=>[...document.querySelectorAll('#levelGrid .lvlBtn')].map(b=>{ const r=b.querySelector('.hr'), cs=getComputedStyle(b); return {i:+b.dataset.i, locked:b.disabled, next:b.classList.contains('next'), three:b.classList.contains('three'), stars:b.querySelectorAll('.ts.on').length, starSlots:b.querySelectorAll('.ts').length, ring:r?{got:+r.dataset.got, miss:r.classList.contains('miss'), bg:getComputedStyle(r).backgroundImage, anim:getComputedStyle(r).animationName}:null, hoopCount:(b.querySelector('.hn')||{}).textContent||'', gold:!!b.querySelector('.gs:not(.off)'), score:(b.querySelector('.sc')||{}).textContent||'', bg:b.style.getPropertyValue('--bg'), anim:cs.animationName, h:b.getBoundingClientRect().height, label:b.getAttribute('aria-label')}; }),
@@ -3416,6 +3470,8 @@ window.__RSP = {
   gLean:()=>+(state.gLean||0).toFixed(3),
   gate:()=>{ const G=state.level&&state.level._gate; return G?{bx:+G.bx.toFixed(1), gx:+G.gx.toFixed(1), pressed:G.pressed, bonus:G.bonus, open:+G.open.toFixed(2), opened:G.opened, n:state.gatesOpened||0}:null; },
   lava:()=>{ const L=state.level&&state.level._lava; return L?{n:L.blobs.length, launched:state.blobsLaunched||0, bonks:state.bonks||0}:null; },
+  setMode:(m)=>{ state.mode=m; }, togglePause,
+  shocks:()=>({..._swStat, active:SHOCKS.filter(S=>S.m.visible).length, dust:_dustRGB.map(v=>+v.toFixed(3)), programs:new Set(SHOCKS.map(S=>S.m.material)).size, tex:SHOCKS.every(S=>S.m.material.map===_swTex)}), _shockTest:(q,impact)=>{ const f=state.framesData.segs[car.segIndex]||state.framesData.segs[0]; const fr=sampleInto(f, car.s, makeFrame()); landBurst(car.pos, fr, impact||20, q); },
   landing:()=>({clean:state.cleanLands||0, perfect:state.perfectLands||0, streak:state.landStreak||0, best:state.bestStreak||0}),
   fans:()=>({n:(state.level&&state.level._fans||[]).length, hits:state.fanHits||0, peak:+(state.fanPeak||0).toFixed(2)}),
   train:()=>{ const t=state.level&&state.level._train; return t?{on:true, x:+t.x.toFixed(1), dx:+(t.x-car.pos.x).toFixed(1), speed:+t.speed.toFixed(1), honked:t.honked, alongside:+t.alongside.toFixed(2)}:{on:false}; },
