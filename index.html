@@ -73,6 +73,35 @@ button.menu.gold{background:linear-gradient(180deg,#ffd76a,#e09020);color:#1a100
 .lvlBtn{aspect-ratio:1;border-radius:16px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#fff;font-weight:800;font-size:20px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
 .lvlBtn small{font-size:10px;opacity:.7;font-weight:600}
 .lvlBtn:disabled{opacity:.35}
+/* v30: level-select tiles = mini postcards of each level (its own sky/horizon/ground colours) with saved stars, the hoop medal
+   ring in that level's hoop palette (spins if caught, greyed if missed), the gold ✪, a padlock when locked and a pulsing
+   PLAY ring on the next level to beat. Tiles cascade in, then the stars pop one by one. Pure HTML/CSS, built once per open. */
+#levelGrid.v30{grid-template-columns:repeat(4,1fr);max-width:600px;gap:12px;margin:12px auto 6px}
+.lvlBtn.tile{position:relative;aspect-ratio:auto;height:118px;padding:0;overflow:hidden;justify-content:flex-start;gap:0;border:2px solid rgba(255,255,255,.22);background:var(--bg);box-shadow:0 6px 0 rgba(0,0,0,.35),0 10px 22px rgba(0,0,0,.35);animation:tileIn .45s cubic-bezier(.3,1.5,.5,1) both;transition:transform .12s}
+.lvlBtn.tile:active{transform:translateY(3px) scale(.97)}
+.lvlBtn.tile::before{content:'';position:absolute;left:-10%;right:-10%;top:49%;height:30%;background:var(--hill);border-radius:50% 50% 0 0;opacity:.9;box-shadow:0 -2px 0 var(--rail)}
+.lvlBtn.tile::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,rgba(255,255,255,.22),transparent 38%,rgba(0,0,0,.42) 100%);pointer-events:none}
+.tile .num{position:relative;z-index:1;margin-top:7px;font-size:30px;line-height:1;font-weight:900;color:#fff;text-shadow:0 2px 0 rgba(0,0,0,.45),0 0 12px rgba(0,0,0,.35)}
+.tile .nm{position:relative;z-index:1;font-size:10px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.8);margin-top:2px;white-space:nowrap}
+.tile .meta{position:absolute;z-index:1;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;gap:5px;padding:4px 4px 5px;background:rgba(6,10,24,.62)}
+.tile .ts{font-size:15px;line-height:1;display:inline-block;animation:starPop .45s cubic-bezier(.3,1.6,.5,1) both}
+.tile .ts.on{color:#ffd24a;text-shadow:0 0 8px rgba(255,200,60,.9),0 1px 0 #b06a00}
+.tile .ts.off{color:#fff;opacity:.3}
+.tile .hr{width:20px;height:20px;border-radius:50%;flex:none;margin-left:3px;-webkit-mask:radial-gradient(circle closest-side,transparent 48%,#000 54%,#000 90%,transparent 97%);mask:radial-gradient(circle closest-side,transparent 48%,#000 54%,#000 90%,transparent 97%);animation:ringSpin 3.2s linear infinite}
+.tile .hr.miss{filter:grayscale(.9) brightness(.7);opacity:.6;animation:none}
+.tile .hn{font-size:10px;font-weight:900;color:#fff}
+.tile .gs{font-size:13px;color:#ffcf3a;text-shadow:0 0 6px rgba(255,200,40,.9)}
+.tile .gs.off{color:#fff;opacity:.25;text-shadow:none}
+.tile .sc{position:absolute;z-index:1;top:5px;right:6px;font-size:9px;font-weight:800;color:#fff;background:rgba(0,0,0,.35);border-radius:6px;padding:1px 5px}
+.tile.locked{filter:saturate(.25) brightness(.55);opacity:1}
+.tile .lk{position:relative;z-index:1;font-size:22px;margin-top:4px}
+.tile.next{border-color:#ffd76a;animation:tileIn .45s cubic-bezier(.3,1.5,.5,1) both,nextGlow 1.4s .6s ease-in-out infinite}
+.tile .go{font-size:11px;font-weight:900;color:#1a1000;background:linear-gradient(180deg,#ffd76a,#e09020);border-radius:7px;padding:1px 8px}
+.tile.three .meta::after{content:'';position:absolute;inset:0;background:linear-gradient(105deg,transparent 35%,rgba(255,255,255,.4) 50%,transparent 65%);transform:translateX(-120%);animation:medalShine 1.4s 1s ease-out 1}
+@keyframes tileIn{0%{opacity:0;transform:translateY(18px) scale(.7)}100%{opacity:1;transform:none}}
+@keyframes nextGlow{0%,100%{box-shadow:0 6px 0 rgba(0,0,0,.35),0 0 0 0 rgba(255,215,106,.0)}50%{box-shadow:0 6px 0 rgba(0,0,0,.35),0 0 0 5px rgba(255,215,106,.55)}}
+@media (max-height:500px){#levelGrid.v30{gap:8px;margin:6px auto 2px;max-width:560px}.lvlBtn.tile{height:84px}.tile .num{font-size:22px;margin-top:4px}.tile .nm{font-size:9px}.tile .meta{padding:2px 3px 3px}.tile .ts{font-size:12px}.tile .hr{width:15px;height:15px}.tile .sc{display:none}}
+@media (prefers-reduced-motion:reduce){.lvlBtn.tile,.tile .ts,.tile .hr,.tile.next,.tile.three .meta::after{animation:none!important}}
 .gradeHero{font-size:clamp(48px,11vw,88px);font-weight:900;line-height:1;margin:8px 0 4px;letter-spacing:4px;filter:drop-shadow(0 4px 16px rgba(255,180,40,.45))}
 /* v28: results-card hoop medal (CSS-drawn ring in the level's own hoop palette) + stars that pop in one by one */
 .gradeHero .st{display:inline-block;animation:starPop .5s cubic-bezier(.3,1.6,.5,1) both}
@@ -752,10 +781,75 @@ world.add(trackGroup, decorGroup, pickupGroup);
 
 /* v10 suspension constants (car-local units; car mesh scale 0.85) */
 const SUSP = { lift:0.10, sag:0.05, maxC:0.20, droop:-0.12, k:240, d:11, kAir:90, dAir:9, axF:1.15, axR:1.06, wb:2.6, wheelR:0.32 };
+/* v31 VISUAL: ROCKET PLUMES. The original Stunt Paradise sells its boost with a big bright exhaust flame; v30 only lit the
+   nozzles and threw sparks. Now each of the 4 gold nozzles grows a hot cone of flame (white-yellow core -> orange -> fades to
+   nothing at the tip) that stretches, flickers and pulses while the rocket burns and shrinks away when it stops. All 4 plumes
+   (outer flame + inner core) are ONE merged mesh with RGBA vertex colours (normal alpha blending, so the orange still reads on
+   the bright Desert/Ice skies where additive washes out to white): 1 draw call, only drawn while burning, no texture, no
+   lights, no per-frame allocation. */
+const FLAME_LEN = 2.2;
+const flameMat = new THREE.MeshBasicMaterial({ vertexColors:true, transparent:true, depthWrite:false, fog:false, side:THREE.DoubleSide });
+function makeThrusterFlames(nozzles){
+  const pos=[], col=[], cA=new THREE.Color(), cB=new THREE.Color();
+  const layers = [ {r:0.15, len:1.0, base:0xffd060, mid:0xff5a10, a:0.95}, {r:0.075, len:0.5, base:0xffffff, mid:0xfff0b0, a:1.0} ];
+  for(const n of nozzles){ for(const Ly of layers){
+    const g = new THREE.ConeGeometry(Ly.r, Ly.len, 10, 3, true).toNonIndexed(); // apex at +len/2 on y
+    g.rotateZ(Math.PI/2); // apex now points to -x (out of the back of the car)
+    g.translate(-Ly.len/2, 0, 0);
+    const P = g.attributes.position.array;
+    for(let i=0;i<P.length;i+=3){ const t = Math.min(1, Math.max(0, -P[i]/Ly.len)); // 0 at nozzle, 1 at tip
+      cA.set(Ly.base); cB.set(Ly.mid); cA.lerp(cB, Math.min(1, t*1.4)); // hot core colour at the nozzle -> flame colour along the plume
+      pos.push(P[i] + n.position.x - 0.17, P[i+1] + n.position.y, P[i+2] + n.position.z); col.push(cA.r, cA.g, cA.b, Ly.a*Math.pow(1-t, 1.3)); } // alpha fades to 0 at the tip
+    g.dispose(); } }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos,3)); geo.setAttribute('color', new THREE.Float32BufferAttribute(col,4));
+  geo.computeBoundingSphere();
+  const m = new THREE.Mesh(geo, flameMat); m.visible = false; m.renderOrder = 3; m.frustumCulled = false; m.userData.k = 0;
+  // scale about the nozzle plane (x = nozzle x - 0.17), so the flame grows out of the nozzles instead of sliding
+  m.userData.x0 = nozzles[0].position.x - 0.17; return m;
+}
+const _flameSt = { k:0, t:0, peak:0, frames:0 };
+function updateFlames(dt){
+  if(state.mode==='pause') return; // paused: the plume freezes with the rest of the scene
+  const m = carVisual.flame, on = !!(input.thrust && state.fuel>0 && state.mode==='play');
+  _flameSt.k += ((on?1:0) - _flameSt.k) * damp(on?16:10, dt); _flameSt.t += dt;
+  if(_flameSt.k < 0.02 || state.mode==='title' || state.mode==='select'){ m.visible = false; return; }
+  m.visible = true; _flameSt.frames++;
+  const t = _flameSt.t, fl = 1 + 0.16*Math.sin(t*41) + 0.1*Math.sin(t*67+1.3) + 0.06*Math.sin(t*23+0.4); // flicker
+  const sp = Math.min(1, Math.abs(car.speed)/40), L = FLAME_LEN * _flameSt.k * fl * (0.85 + 0.35*sp), w = 1;
+  m.scale.set(L, w, w); m.position.x = m.userData.x0 * (1 - L); // keep the nozzle end fixed while x scales
+  if(L > _flameSt.peak) _flameSt.peak = L;
+}
+/* v31 VISUAL: THEMED SHOWROOM REFLECTIONS. The roadster was lit only by sun/hemi/ambient, so its white paint looked flat and
+   the gold nozzles/rims looked brown (metals need something to reflect). Each world now gets a tiny painted reflection map
+   (its own zenith -> horizon sky, a bright sun spot where the real sun is, a thin band of the world's rail colour on the
+   horizon, and its ground colour below), pre-filtered once with PMREM and cached per world. Only the car's materials use it
+   (scene.environment stays null, so track/scenery cost is unchanged): the paint gets a clear-coat gleam and a horizon line,
+   the glass reflects that world's sky, the gold reads as metal. Built at level start while the banner is up; same shader
+   program for every world (only the texture changes), so no mid-run compile. */
+const _envCache = {}; let _pmrem = null; const CAR_ENV_K = { white:0.9, whiteSatin:0.7, dark:1.0, glass:1.25, gold:1.1, tire:0.25, lightMat:0.4 };
+let _envBuilt = 0;
+function carEnvFor(key, th){
+  if(_envCache[key]) return _envCache[key];
+  const g = SKY_GRAD[key] || SKY_GRAD.desert, W = 128, H = 64, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const x = cv.getContext('2d'), hx = n => '#'+(n>>>0).toString(16).padStart(6,'0');
+  const gr = x.createLinearGradient(0,0,0,H); gr.addColorStop(0, hx(g[0])); gr.addColorStop(0.47, hx(g[1])); gr.addColorStop(0.5, hx(th.rail)); gr.addColorStop(0.53, hx(th.ground)); gr.addColorStop(1, hx(th.track));
+  x.fillStyle = gr; x.fillRect(0,0,W,H);
+  x.globalAlpha = 0.5; x.fillStyle = hx(th.rail); x.fillRect(0, H*0.485, W, 2); x.globalAlpha = 1; // crisp horizon glint
+  const sx = W*0.341, sy = H*0.314, sg = x.createRadialGradient(sx,sy,0,sx,sy,H*0.32); const sk = key==='cyber'?0.45:(key==='volcano'?0.7:1);
+  sg.addColorStop(0, 'rgba(255,255,255,'+sk+')'); sg.addColorStop(0.15, 'rgba(255,248,225,'+(0.75*sk)+')'); sg.addColorStop(1, 'rgba(255,240,210,0)');
+  x.fillStyle = sg; x.fillRect(0,0,W,H);
+  x.fillStyle = 'rgba(255,255,255,'+(0.35*sk)+')'; x.fillRect(W*0.62, H*0.12, W*0.16, 3); x.fillRect(W*0.86, H*0.2, W*0.1, 2); // two soft "studio strip" highlights for the paint
+  const tex = new THREE.CanvasTexture(cv); tex.mapping = THREE.EquirectangularReflectionMapping; tex.colorSpace = THREE.SRGBColorSpace;
+  try{ _pmrem = _pmrem || new THREE.PMREMGenerator(renderer); const rt = _pmrem.fromEquirectangular(tex); _envCache[key] = rt.texture; _envBuilt++; }catch(e){ _envCache[key] = null; }
+  tex.dispose(); return _envCache[key];
+}
+function setCarEnv(key, th){ let M; try{ M = carVisual.mats; }catch(e){ return; } const env = carEnvFor(key, th); if(!env) return;
+  for(const k in CAR_ENV_K){ const m = M[k]; if(m.envMap !== env){ const fresh = !m.envMap; m.envMap = env; m.envMapIntensity = CAR_ENV_K[k]; if(fresh) m.needsUpdate = true; } }
+  state.carEnvKey = key; }
 /* Roadster mesh */
 function makeRoadster(){
   const g = new THREE.Group();
-  const white = new THREE.MeshStandardMaterial({ color:0xf7f5f0, metalness:0.18, roughness:0.42 });
+  const white = new THREE.MeshStandardMaterial({ color:0xf7f5f0, metalness:0.18, roughness:0.34 }); // v31: a touch glossier; the themed reflection map (CAR_ENV) gives it a clear-coat gleam
   const whiteSatin = new THREE.MeshStandardMaterial({ color:0xf0ece6, metalness:0.12, roughness:0.5 });
   const dark = new THREE.MeshStandardMaterial({ color:0x1a1e28, metalness:0.7, roughness:0.35 });
   const glass = new THREE.MeshStandardMaterial({ color:0x1a3048, metalness:0.9, roughness:0.08, transparent:true, opacity:0.85 });
@@ -814,7 +908,8 @@ function makeRoadster(){
     hubs.push({hub, front:x>0, baseY:y});
   }
   g.scale.set(0.85,0.85,0.85);
-  return { group:g, body:sprung, hubs, nozzles, wheels, lightBar, baseScale:0.85 };
+  const flame = makeThrusterFlames(nozzles); sprung.add(flame); // v31 visible rocket plumes
+  return { group:g, body:sprung, hubs, nozzles, wheels, lightBar, baseScale:0.85, flame, mats:{white, whiteSatin, dark, glass, gold, tire, lightMat} };
 }
 
 const carVisual = makeRoadster();
@@ -989,6 +1084,7 @@ function buildFrames(segments){
       f.globalS = total + f.s;
     }
     total += seg.length;
+    seg.bbc = chunkBoxes(seg.frames); // v30: bounding box per 32-frame chunk so nearestFrame() can skip track that can't be closer
     segs.push(seg);
   }
   return { segs, length: total, frames: segs.flatMap(s=>s.frames) };
@@ -2048,6 +2144,7 @@ function applyTheme(key){
   scene.fog = new THREE.Fog(th.fog, 50, 280);
   setSeaTheme(key); // v17 animated sea / lava sea
   setSkyTheme(key, th); // v16: gradient sky + matching fog + cloud tint
+  setCarEnv(key, th); // v31: car reflects this world's sky
   const LT = WORLD_LIGHT[key] || WORLD_LIGHT.desert; // v15: per-world light mood (intensity + fog depth)
   scene.fog.near = LT.fn*LITE.fogK; scene.fog.far = LT.ff*LITE.fogK; state.fogBase = [LT.fn, LT.ff];
   amb.color.set(th.amb); amb.intensity = LT.amb;
@@ -2292,16 +2389,35 @@ function showTitle(){
   document.getElementById('btnEndless').onclick=()=>{ audio.gesture(); audio.ui(); startLevel(0,true); };
 }
 
-function showSelect(){
+function _tileBg(th){ const c=k=>_hx(th[k]); return 'linear-gradient(180deg,'+c('sky')+' 0%,'+c('fog')+' 52%,'+c('ground')+' 53%,'+c('track')+' 100%)'; }
+function showSelect(){ // v30: postcard tiles with saved stars + hoop medal (see CSS note)
   state.mode='select'; showPlayUI(false);
-  let html='<h1>Select Level</h1><p class="sub">Finish for 1★ · collect stars & smash for more.</p><div id="levelGrid">';
+  let html='<h1>Select Level</h1><p class="sub">Finish for 1★ · collect stars & smash for more · catch each level\'s hoop!</p><div id="levelGrid" class="v30">';
+  let nextSet=false;
   for(let i=0;i<LEVELS.length;i++){
+    const Lv=LEVELS[i], th=THEMES[Lv.theme]||THEMES.paradise;
     const unlocked = i===0 || (scores.levels[i-1]!=null);
     const best = scores.levels[i];
-    const bestStars = ((best && typeof best==='object' && best.stars!=null) ? starString(best.stars) : '') + ((best && best.gold) ? ' ✪' : '');
-    const bestScore = best==null ? null : (typeof best==='object' ? (best.score||0) : best);
-    html += '<button class="lvlBtn" data-i="'+i+'" '+(unlocked?'':'disabled')+'>'+(i+1)+
-      (bestScore!=null?'<small>'+bestScore.toLocaleString()+' '+bestStars+'</small>':'<small>'+LEVELS[i].name.split(' ')[0]+'</small>')+'</button>';
+    const bo = (best && typeof best==='object') ? best : null;
+    const bestScore = best==null ? null : (bo ? (bo.score||0) : best);
+    const stars = bo && bo.stars!=null ? bo.stars : 0;
+    const isNext = unlocked && best==null && !nextSet; if(isNext) nextSet=true;
+    const d0 = i*0.05; // cascade
+    let meta='';
+    if(!unlocked) meta='<span class="hn">LOCKED</span>';
+    else if(best==null) meta='<span class="go">PLAY ▶</span>';
+    else {
+      for(let k=0;k<3;k++) meta+='<span class="ts '+(k<stars?'on':'off')+'" style="animation-delay:'+(d0+0.35+k*0.12).toFixed(2)+'s">'+(k<stars?'★':'☆')+'</span>';
+      const nH = Lv.hoops ? Lv.hoops.length : (Lv.hoop ? 1 : 0);
+      if(nH){ const ht=HOOP_THEMES[Lv.hoopTheme||'candy'], got=Math.min(nH, (bo&&bo.hoops)||0);
+        meta+='<span class="hr'+(got?'':' miss')+'" data-got="'+got+'" style="background:repeating-conic-gradient('+_hx(ht.a)+' 0 30deg,'+_hx(ht.b)+' 30deg 60deg);box-shadow:inset 0 0 0 2px '+_hx(ht.rim)+'"></span>'+(nH>1?'<span class="hn">'+got+'/'+nH+'</span>':''); }
+      if(Lv.gold) meta+='<span class="gs'+(bo&&bo.gold?'':' off')+'">✪</span>';
+    }
+    const nm = Lv.name;
+    html += '<button class="lvlBtn tile'+(unlocked?'':' locked')+(isNext?' next':'')+(stars>=3?' three':'')+'" data-i="'+i+'" '+(unlocked?'':'disabled ')+
+      'aria-label="Level '+(i+1)+' '+Lv.name+(unlocked?(best!=null?', '+stars+(stars===1?' star':' stars'):''):', locked')+'" style="--bg:'+_tileBg(th)+';--hill:'+_hx(th.ground)+';--rail:'+_hx(th.rail)+';animation-delay:'+d0.toFixed(2)+'s">'+
+      (bestScore!=null?'<span class="sc">'+bestScore.toLocaleString()+'</span>':'')+
+      '<span class="num">'+(i+1)+'</span><span class="nm">'+nm+'</span>'+(unlocked?'':'<span class="lk">🔒</span>')+'<span class="meta">'+meta+'</span></button>';
   }
   html += '</div><div class="btnRow"><button class="menu secondary" id="btnBack">BACK</button></div>';
   document.getElementById('card').innerHTML=html;
@@ -2445,7 +2561,20 @@ const FUEL_REGEN = 0.16;
 const DT = 1/60;
 
 const _EMPTY=Object.freeze([]); const _pref=[]; // v10: reused (was a fresh array + iterators per call, ~3 calls per physics step while airborne)
-function nearestFrame(pos){
+const _nf={calls:0, scanned:0, skipped:0}; // v30: nearestFrame work counters (exposed as __RSP.nfStats)
+const NF_CH = 32; // frames per chunk box
+let _nfLb = new Float64Array(512); // v30: per-call scratch of chunk lower bounds (typed array = no boxed numbers)
+function nfLbFill(segs, list, n, wNext, next, own, px, py, pz){ // writes weighted box distances for every chunk of the listed segments, in list order; returns chunk count
+  let k=0; for(let pi=0; pi<n; pi++){ const si=list[pi], bb=segs[si].bbc, w=(si===next) ? wNext : (si===own ? 1.5 : 1.0), nc=bb.length/6;
+    if(k+nc > _nfLb.length){ const t=new Float64Array(Math.max(_nfLb.length*2, k+nc)); t.set(_nfLb); _nfLb=t; }
+    for(let c=0, o=0; c<nc; c++, o+=6){ const dx = px<bb[o] ? bb[o]-px : (px>bb[o+1] ? px-bb[o+1] : 0), dy = py<bb[o+2] ? bb[o+2]-py : (py>bb[o+3] ? py-bb[o+3] : 0), dz = pz<bb[o+4] ? bb[o+4]-pz : (pz>bb[o+5] ? pz-bb[o+5] : 0);
+      _nfLb[k++] = (dx*dx+dy*dy+dz*dz)*w; } }
+  return k; }
+const _lipList=[0,0];
+function chunkBoxes(fr){ const n=Math.ceil(fr.length/NF_CH), b=new Float64Array(n*6);
+  for(let c=0;c<n;c++){ let a=1e9,x1=-1e9,y0=1e9,y1=-1e9,z0=1e9,z1=-1e9; for(let j=c*NF_CH, e=Math.min(fr.length,j+NF_CH); j<e; j++){ const q=fr[j].pos; if(q.x<a)a=q.x; if(q.x>x1)x1=q.x; if(q.y<y0)y0=q.y; if(q.y>y1)y1=q.y; if(q.z<z0)z0=q.z; if(q.z>z1)z1=q.z; }
+    b[c*6]=a; b[c*6+1]=x1; b[c*6+2]=y0; b[c*6+3]=y1; b[c*6+4]=z0; b[c*6+5]=z1; } return b; }
+function nearestFrameRef(pos){ // v30 test-only: the unpruned v29 search, used by e2e-v30 to prove the pruned one returns the same frame
   const frames=state.framesData.frames;
   const segs=state.framesData.segs;
   // When airborne, strongly prefer the NEXT segment (landing pad) over the lip we just left
@@ -2476,6 +2605,73 @@ function nearestFrame(pos){
     let bf=null, bd2=1e12;
     for(let si=car.segIndex; si<=car.segIndex+1; si++){ const sg=segs[si]; if(!sg) continue; const fr=sg.frames;
       for(let j=0;j<fr.length;j++){ const d=fr[j].pos.distanceToSquared(pos); if(d<bd2){bd2=d;bf=fr[j];} } }
+    if(bf) return bf;
+  }
+  let best=0, bd=1e12;
+  const step=Math.max(1, Math.floor(frames.length/50));
+  for(let i=0;i<frames.length;i+=step){
+    const d=frames[i].pos.distanceToSquared(pos);
+    if(d<bd){ bd=d; best=i; }
+  }
+  const lo=Math.max(0,best-step*2), hi=Math.min(frames.length-1,best+step*2);
+  for(let i=lo;i<=hi;i++){
+    const d=frames[i].pos.distanceToSquared(pos);
+    if(d<bd){ bd=d; best=i; }
+  }
+  return frames[best];
+}
+function nearestFrame(pos){
+  const frames=state.framesData.frames;
+  const segs=state.framesData.segs;
+  // When airborne, strongly prefer the NEXT segment (landing pad) over the lip we just left
+  if(!car.grounded && !car.lipLaunch && segs && segs.length){ // v7: lip jumps use true nearest track
+    const prefer = _pref; prefer.length = 0;
+    const next = Math.min(car.segIndex + 1, segs.length - 1);
+    prefer.push(next);
+    // During airGrace, skip the segment we launched from entirely
+    if(car.airGrace <= 0 && next !== car.segIndex) prefer.push(car.segIndex);
+    for(let k=0;k<segs.length;k++){
+      if(car.airGrace > 0 && k === car.segIndex) continue;
+      if(prefer.indexOf(k) < 0) prefer.push(k);
+    }
+    let bestF=null, bd=1e12; const px=pos.x, py=pos.y, pz=pos.z; _nf.calls++;
+    // v30 pass 1: a real upper bound U on the answer, from the chunk whose box is closest (weighted). Any chunk whose box is
+    // further than U can't hold the nearest frame, so pass 2 skips it; pass 2 still walks frames in the original order with
+    // the original strict "<", so the frame returned is exactly the one the v29 full scan returned (ties included).
+    const nK = nfLbFill(segs, prefer, prefer.length, 0.45, next, car.segIndex, px, py, pz);
+    let U=Infinity, bLb=Infinity, bK=-1; for(let k=0;k<nK;k++){ const lb=_nfLb[k]; if(lb<bLb){ bLb=lb; bK=k; } }
+    if(bK>=0){ let k=0; for(let pi=0; pi<prefer.length; pi++){ const si=prefer[pi], seg=segs[si], nc=seg.bbc.length/6; if(bK<k+nc){ const fr=seg.frames, own=(si===car.segIndex), lim=seg.length-4, w=(si===next) ? 0.45 : (own ? 1.5 : 1.0);
+        for(let j=(bK-k)*NF_CH, e=Math.min(fr.length, j+NF_CH); j<e; j++){ const f=fr[j]; if(own && f.s > lim) continue; const q=f.pos, dx=q.x-px, dy=q.y-py, dz=q.z-pz, d=(dx*dx+dy*dy+dz*dz)*w; if(d<U) U=d; } break; } k+=nc; } }
+    let k=0;
+    for(let pi=0; pi<prefer.length; pi++){
+      const si=prefer[pi], seg=segs[si], fr=seg.frames, lim=seg.length-4, own=(si===car.segIndex);
+      const weight = (si===next) ? 0.45 : (own ? 1.5 : 1.0);
+      for(let j0=0; j0<fr.length; j0+=NF_CH, k++){ const j1=Math.min(fr.length, j0+NF_CH);
+        const lb=_nfLb[k]; if(lb > U || lb >= bd){ _nf.skipped += j1-j0; continue; } // v30: exact prune (no frame in this box can be the answer)
+        _nf.scanned += j1-j0;
+        for(let j=j0;j<j1;j++){ const f=fr[j];
+          if(own && f.s > lim) continue;
+          const q=f.pos, dx=q.x-px, dy=q.y-py, dz=q.z-pz; // v30: inlined distanceToSquared (same maths, same result, no call/boxing)
+          const d=(dx*dx+dy*dy+dz*dz) * weight;
+          if(d<bd){ bd=d; bestF=f; }
+        }
+      }
+    }
+    if(bestF) return bestF;
+  }
+  if(!car.grounded && car.lipLaunch && segs){
+    // v7: lip jump — exhaustive search over this segment + next (cheap, accurate landing)
+    let bf=null, bd2=1e12;
+    const px=pos.x, py=pos.y, pz=pos.z; _nf.calls++;
+    let nL=0; for(let si=car.segIndex; si<=car.segIndex+1; si++) if(segs[si]) _lipList[nL++]=si; // v30: same two-pass exact prune as above
+    const nK = nfLbFill(segs, _lipList, nL, 1, -1, -1, px, py, pz);
+    let U=Infinity, bLb=Infinity, bK=-1; for(let k=0;k<nK;k++){ const lb=_nfLb[k]; if(lb<bLb){ bLb=lb; bK=k; } }
+    if(bK>=0){ let k=0; for(let li=0; li<nL; li++){ const sg=segs[_lipList[li]], nc=sg.bbc.length/6; if(bK<k+nc){ const fr=sg.frames; for(let j=(bK-k)*NF_CH, e=Math.min(fr.length, j+NF_CH); j<e; j++){ const q=fr[j].pos, dx=q.x-px, dy=q.y-py, dz=q.z-pz, d=dx*dx+dy*dy+dz*dz; if(d<U) U=d; } break; } k+=nc; } }
+    let k=0;
+    for(let li=0; li<nL; li++){ const sg=segs[_lipList[li]], fr=sg.frames;
+      for(let j0=0; j0<fr.length; j0+=NF_CH, k++){ const j1=Math.min(fr.length, j0+NF_CH);
+        const lb=_nfLb[k]; if(lb > U || lb >= bd2){ _nf.skipped += j1-j0; continue; } _nf.scanned += j1-j0;
+        for(let j=j0;j<j1;j++){ const q=fr[j].pos, dx=q.x-px, dy=q.y-py, dz=q.z-pz, d=dx*dx+dy*dy+dz*dz; if(d<bd2){bd2=d;bf=fr[j];} } } }
     if(bf) return bf;
   }
   let best=0, bd=1e12;
@@ -3030,6 +3226,21 @@ const _cv = { back:new THREE.Vector3(1,0,0).negate(), up:new THREE.Vector3(0,1,0
   tb:new THREE.Vector3(), tu:new THREE.Vector3(), ts:new THREE.Vector3(), tp:new THREE.Vector3(), lt:new THREE.Vector3(),
   W:new THREE.Vector3(0,1,0), roll:0, fov:60, t:0, init:false };
 function damp(rate, dt){ return 1 - Math.exp(-rate*dt); }
+/* v31 TECH: the chase cam changes FOV with speed, and every change ran camera.updateProjectionMatrix(), which rebuilds the
+   whole matrix and then does a general 4x4 Matrix4.invert() for projectionMatrixInverse (the top allocation site left in
+   updateCamera in the v30 heap profile). For this camera (no zoom, no view offset, symmetric frustum) only 2 of the 16
+   numbers depend on FOV, and the inverse of a symmetric perspective matrix is known in closed form. setFovFast writes just
+   those 4 numbers (m[0], m[5] and their reciprocals). Anything unusual (zoom, view offset, film offset, aspect change since
+   the last full update) falls back to the normal three.js path. e2e-v31 checks it against updateProjectionMatrix to 1e-6. */
+const _camStat = { fast:0, full:0, opWrites:0 };
+function setFovFast(cam){
+  const P = cam.projectionMatrix.elements, I = cam.projectionMatrixInverse.elements;
+  if(cam.zoom !== 1 || cam.view !== null || cam.filmOffset !== 0 || cam._v31Aspect !== cam.aspect || cam._v31Near !== cam.near || cam._v31Far !== cam.far){
+    cam.updateProjectionMatrix(); cam._v31Aspect = cam.aspect; cam._v31Near = cam.near; cam._v31Far = cam.far; _camStat.full++; return; }
+  const top = cam.near * Math.tan(THREE.MathUtils.DEG2RAD * 0.5 * cam.fov), h = 2*top, w = cam.aspect*h;
+  P[0] = 2*cam.near/w; P[5] = 2*cam.near/h; I[0] = 1/P[0]; I[5] = 1/P[5]; _camStat.fast++;
+}
+const _camLM = new THREE.Matrix4();
 function updateCamera(dt){
   if(!state.framesData || state.mode!=='play' && state.mode!=='grade' && state.mode!=='fail' && state.mode!=='pause') return;
   if(dt<=0) return;
@@ -3060,12 +3271,12 @@ function updateCamera(dt){
   camera.position.copy(camState.pos);
   camera.position.x += Math.sin(_cv.t*31)*sh*0.5; camera.position.y += Math.sin(_cv.t*23+1.3)*sh*0.5;
   camera.up.set(0,1,0);
-  camera.lookAt(camState.look);
+  _camLM.lookAt(camera.position, camState.look, camera.up); camera.quaternion.setFromRotationMatrix(_camLM); // v31: orient directly (Object3D.lookAt also rebuilt the world matrix and inverted it; the renderer does that once anyway)
   const fovT = 52 + Math.min(0.6, state.fovPunch) * 9 + Math.min(7, Math.abs(car.speed) * 0.1);
   _cv.fov += (fovT - _cv.fov) * damp(6, dt);
-  if(Math.abs(camera.fov - _cv.fov) > 0.04){ camera.fov = _cv.fov; camera.updateProjectionMatrix(); } // v19: 0.04° step (invisible) = far fewer matrix inversions
-  const op = Math.min(0.45, state.fovPunch * 0.4 + Math.abs(car.speed) / 140).toFixed(2);
-  if(_cv.op !== op){ _cv.op = op; speedLinesEl.style.opacity = op; }
+  if(Math.abs(camera.fov - _cv.fov) > 0.04){ camera.fov = _cv.fov; setFovFast(camera); } // v19: 0.04° step (invisible); v31: closed-form, no Matrix4.invert
+  const opI = Math.round(Math.min(0.45, state.fovPunch * 0.4 + Math.abs(car.speed) / 140) * 100); // v31: compare an integer, build the CSS string only when it changes
+  if(_cv.opI !== opI){ _cv.opI = opI; speedLinesEl.style.opacity = opI/100; _camStat.opWrites++; }
 }
 const speedLinesEl = document.getElementById('speedLines');
 
@@ -3082,6 +3293,7 @@ onResize();
 let acc=0, last=performance.now();
 const _prevPos = new THREE.Vector3(), _prevQuat = new THREE.Quaternion(), _titleT = new THREE.Vector3(); // v13: title cam reuses a temp
 function frame(now){
+  const _cpu0 = performance.now(); // v30: CPU budget meter (sim+update and render-submit ms per frame)
   const raw=Math.min(0.05, (now-last)/1000); last=now;
   if(state.slowmo>0){ state.slowmo-=raw; if(state.slowmo<=0) state.slowmoScale=0.45; } const ts = state.slowmo>0 ? (state.slowmoScale||0.45) : 1;
   acc+=raw*ts;
@@ -3115,11 +3327,12 @@ function frame(now){
   else if(state.mode==='grade' || state.mode==='fail'){ updateFans(raw); updateLava(raw); updateKicker(raw); updatePopRamp(raw); updateSeesaw(raw); updateHoop(raw); } // v23 visual: the world keeps moving under the results and crash screens (fans spin, lava bubbles, ramps rock) instead of freezing mid-motion; none of these can score or launch outside play
   updateGhost(); updateTrail(raw); // v20 light trails (v25 fix: v23 accidentally left these two calls inside the comment above, so ghost replays and tail-light trails stopped drawing in v23/v24)
   audio.engine(state.mode==='play' && !document.hidden, car.speed, !!input.gas, car.grounded, !!(input.thrust && state.fuel>0 && state.mode==='play'));
+  updateFlames(raw); // v31 rocket plumes
   for(const n of carVisual.nozzles){
     n.material.emissiveIntensity = (input.thrust && state.fuel>0 && state.mode==='play') ? 1.2 : 0.25;
   }
   updateContactShadow(); updateSky(raw); updateSea(raw); updateFinale(raw);
-  if(!document.hidden){ renderer.render(scene, camera); perfTick(now); } // v15: no GPU work while backgrounded
+  if(!document.hidden){ const _cpu1=performance.now(); renderer.render(scene, camera); cpuMeter(_cpu1-_cpu0, performance.now()-_cpu1); perfTick(now); } // v15: no GPU work while backgrounded
   requestAnimationFrame(frame);
 }
 
@@ -3143,6 +3356,17 @@ function updateContactShadow(){
 const FPS_ON = /[?&]fps=1/.test(location.search);
 let fpsEl=null; if(FPS_ON){ fpsEl=document.createElement('div'); fpsEl.style.cssText='position:fixed;left:6px;top:6px;z-index:99;font:12px monospace;color:#0f0;background:rgba(0,0,0,.6);padding:3px 6px;pointer-events:none;white-space:pre'; document.body.appendChild(fpsEl); }
 let _pfT=0, _pfN=0, _pfLast=0, _pfSlow=0, _pfLiteSlow=0, _pfHitch=0, _pfWorst=0;
+/* v30 CPU METER: ring buffers of the JS time spent per frame on simulation/update and on render submission (draw-call
+   building). This is the part of the frame budget the game itself controls, measured the same way on any device, so
+   ?fps=1 on an iPhone/iPad shows "cpu sim/rend" next to the fps. Fixed Float32Arrays: zero allocations per frame. */
+const CPU_N=240, _cpuSim=new Float32Array(CPU_N), _cpuRen=new Float32Array(CPU_N), _cpuTmp=new Float32Array(CPU_N); let _cpuI=0, _cpuFill=0;
+function cpuMeter(sim, ren){ if(state.mode!=='play') return; _cpuSim[_cpuI]=sim; _cpuRen[_cpuI]=ren; _cpuI=(_cpuI+1)%CPU_N; if(_cpuFill<CPU_N) _cpuFill++; }
+function _pct(buf, q){ const n=_cpuFill; if(!n) return 0; for(let i=0;i<n;i++) _cpuTmp[i]=buf[i]; const v=_cpuTmp.subarray(0,n).sort(); return v[Math.min(n-1, Math.floor(q*n))]; }
+function cpuStats(){ return {n:_cpuFill, simP50:+_pct(_cpuSim,0.5).toFixed(2), simP95:+_pct(_cpuSim,0.95).toFixed(2), renP50:+_pct(_cpuRen,0.5).toFixed(2), renP95:+_pct(_cpuRen,0.95).toFixed(2)}; }
+/* v30 LITE RECOVERY: v15 lite tier switched on for good once a device was slow (e.g. a hot iPad or a busy moment). Now, if
+   the auto lite tier is on and the game holds 58+ fps for 6 s in play, full detail comes back. If it then has to drop to
+   lite again, it stays lite for the rest of the session (no flip-flopping). ?lite=1 and low-detail force it and never recover. */
+let _liteAuto=false, _liteFast=0, _liteRecovered=0, _liteLocked=false;
 /* v15 LITE TIER: if the device is still slow at DPR 1, pull in the far plane + fog and halve particle spawns.
    Never touches physics, so play feels identical — just less far-away scenery. ?lite=1 forces it for testing. */
 function setLite(on){ if(LITE.on===on) return; LITE.on=on; LITE.fogK = on?0.7:1; LITE.pK = on?0.5:1; pMat.size = on?0.95:1.2; // v20: lite tier also shrinks glow sprites (fill-rate)
@@ -3158,8 +3382,9 @@ function perfTick(now){
     if(fps < 52 && dprNow > 1){ if(++_pfSlow>=2){ dprNow=Math.max(1, dprNow-0.25); renderer.setPixelRatio(dprNow); onResize(); _pfSlow=0; } }
     else if(fps > 58.5 && dprNow < DPR_MAX){ dprNow=Math.min(DPR_MAX, dprNow+0.125); renderer.setPixelRatio(dprNow); onResize(); _pfSlow=0; }
     else _pfSlow=0;
-    if(dprNow<=1 && fps<45 && state.mode==='play'){ if(++_pfLiteSlow>=3){ setLite(true); _pfLiteSlow=0; } } else _pfLiteSlow=0; // v15
-    if(fpsEl) fpsEl.textContent = fps.toFixed(0)+' fps  '+ms.toFixed(1)+' ms\ndpr '+dprNow.toFixed(2)+'  lite '+(LITE.on?'on':'off')+'\nhitches '+_pfHitch+'  worst '+_pfWorst.toFixed(0)+' ms  calls '+renderer.info.render.calls+'  tris '+renderer.info.render.triangles;
+    if(dprNow<=1 && fps<45 && state.mode==='play'){ if(++_pfLiteSlow>=3){ if(!LITE.on){ setLite(true); _liteAuto=true; if(_liteRecovered) _liteLocked=true; } _pfLiteSlow=0; } } else _pfLiteSlow=0; // v15
+    if(LITE.on && _liteAuto && !_liteLocked && state.mode==='play' && fps>=58){ if(++_liteFast>=6){ setLite(false); _liteAuto=false; _liteRecovered++; _liteFast=0; } } else _liteFast=0; // v30 recovery
+    if(fpsEl) fpsEl.textContent = fps.toFixed(0)+' fps  '+ms.toFixed(1)+' ms\ndpr '+dprNow.toFixed(2)+'  lite '+(LITE.on?'on':'off')+'\nhitches '+_pfHitch+'  worst '+_pfWorst.toFixed(0)+' ms  calls '+renderer.info.render.calls+'  tris '+renderer.info.render.triangles+(()=>{ const c=cpuStats(); return '\ncpu sim '+c.simP50.toFixed(1)+'/'+c.simP95.toFixed(1)+'  rend '+c.renP50.toFixed(1)+'/'+c.renP95.toFixed(1)+' ms (p50/p95)'; })();
     _pfT=0; _pfN=0;
   }
 }
@@ -3176,7 +3401,11 @@ requestAnimationFrame(frame);
 
 // Expose for smoke tests
 window.__RSP = {
-  version:29, medal:()=>{ const e=document.querySelector('#card .hoopMedal'); if(!e) return null; const r=e.querySelector('.ring'), cs=r?getComputedStyle(r):null; return {text:e.textContent, got:+e.dataset.got, total:+e.dataset.total, best:+e.dataset.best, isNew:e.classList.contains('new'), chain:e.classList.contains('chain'), bg:cs?cs.backgroundImage:'', anim:cs?cs.animationName:'', stars:[...document.querySelectorAll('#card .gradeHero .st')].map(x=>getComputedStyle(x).animationName), saved:(scores.levels[state.levelIndex]&&scores.levels[state.levelIndex].hoops)||0}; }, hoopTheme:()=>{ const L=state.level, H=L&&L._hoop; return H?{label:L._hoopLabel, flames:!!H.fl, flameScale:H.fl?+H.fl.scale.x.toFixed(3):null, flameOpacity:+hoopFlameMat.opacity.toFixed(3), flameUnlit:hoopFlameMat.type==='MeshBasicMaterial', tick:H.tick, rotZ:+H.m.rotation.z.toFixed(3), verts:H.m.geometry.attributes.position.count}:null; }, hoops:()=>{ const HS=state.level&&state.level._hoops; return HS&&HS.length?{n:HS.length, list:HS.map(H=>({x:H.x, y:+H.y.toFixed(2), hits:H.hits, done:H.done, punch:+H.punch.toFixed(3)})), total:state.hoops||0, chain:state.hoopChain||0, chains:state.hoopChains||0, unlit:HS[0].m.material.type, mats:new Set(HS.map(H=>H.m.material)).size}:null; }, hoop:()=>{ const H=state.level&&state.level._hoop; return H?{x:H.x, y:+H.y.toFixed(2), y0:H.y0, hits:H.hits, n:state.hoops||0, punch:+H.punch.toFixed(3), spin:+H.m.rotation.z.toFixed(2), t:+H.t.toFixed(2), carX:car.pos.x, carY:car.pos.y, unlit:H.m.material.type}:null; }, ambient:()=>({fanSpin:(state.level&&state.level._fans&&state.level._fans[0])?+state.level._fans[0].blades.rotation.y.toFixed(2):null, sawT:(state.level&&state.level._saw)?+state.level._saw.t.toFixed(2):null, kickT:(state.level&&state.level._kick)?+state.level._kick.t.toFixed(2):null, popT:(state.level&&state.level._pop)?+state.level._pop.t.toFixed(2):null, hoopT:(state.level&&state.level._hoop)?+state.level._hoop.t.toFixed(2):null, mode:state.mode, bonks:state.bonks||0}), sawStripeColor:()=>{ const S=state.level&&state.level._saw; if(!S) return null; const st=S.pv.children[0]; return {unlit:st.material.type, blocks:st.geometry.attributes.position.count}; }, seesaw:()=>{ const S=state.level&&state.level._saw; return S?{x:+S.x.toFixed(1), y:S.y, ang:+S.ang.toFixed(3), state:S.state, hits:S.hits, slams:S.slams, n:state.seesaws||0, carX:car.pos.x, air:!car.grounded, ei:+sawMat.emissiveIntensity.toFixed(2)}:null; }, _flatRuns:(mn)=>flatRuns(state.level,state.framesData,mn).map(r=>[+r.a.pos.x.toFixed(1),+r.b.pos.x.toFixed(1),+r.a.pos.y.toFixed(1)]), _steep:()=>{ const o=[]; for(const sg of state.framesData.segs) for(const f of sg.frames) if(f.normal.y<0.5) o.push(Math.round(f.pos.x)); return [...new Set(o)]; }, popRamp:()=>{ const Q=state.level&&state.level._pop; return Q?{x:Q.x, y:Q.y, h:+Q.h.toFixed(3), t:Q.t, hits:Q.hits, maxPops:Q.maxPops, rolls:Q.rolls, pops:state.pops||0, carX:car.pos.x, air:!car.grounded, scaleY:Q.m.scale.y}:null; }, setPopPhase:(t)=>{ const Q=state.level&&state.level._pop; if(Q){ Q.t=t; Q.cool=0; Q.aH=0; } }, popAssistInfo:()=>{ const Q=state.level&&state.level._pop; return Q?{assist:Q.assist, aH:+Q.aH.toFixed(3), holds:Q.holds, h:+Q.h.toFixed(3)}:null; }, trail:()=>trailInfo(), popHeight,
+  version:31, carScreen:()=>{ const v=carVisual.group.position.clone().project(camera); return {x:(v.x+1)/2*innerWidth, y:(1-v.y)/2*innerHeight}; }, camStat:()=>({..._camStat}), _setFovFast:(f)=>{ camera.fov=f; setFovFast(camera); }, flame:()=>({visible:carVisual.flame.visible, k:+_flameSt.k.toFixed(3), len:+carVisual.flame.scale.x.toFixed(3), peak:+_flameSt.peak.toFixed(3), frames:_flameSt.frames, blend:carVisual.flame.material.blending, rgba:carVisual.flame.geometry.attributes.color.itemSize===4, verts:carVisual.flame.geometry.attributes.position.count}), carEnv:()=>({key:state.carEnvKey||null, built:_envBuilt, cached:Object.keys(_envCache).length, mats:Object.keys(CAR_ENV_K).map(k=>({k, env:!!carVisual.mats[k].envMap, i:carVisual.mats[k].envMapIntensity, same:carVisual.mats[k].envMap===_envCache[state.carEnvKey]}))}), _lookCheck:()=>{ const c=camera.clone(); c.lookAt(camState.look); return {dq:1-Math.abs(c.quaternion.dot(camera.quaternion))}; }, _projCheck:()=>{ const a=camera.projectionMatrix.elements.slice(), ai=camera.projectionMatrixInverse.elements.slice(); const c=camera.clone(); c.updateProjectionMatrix(); let d=0, di=0; for(let i=0;i<16;i++){ d=Math.max(d,Math.abs(a[i]-c.projectionMatrix.elements[i])); di=Math.max(di,Math.abs(ai[i]-c.projectionMatrixInverse.elements[i])); } return {d, di, fov:camera.fov}; }, cpuStats, nfStats:()=>({calls:_nf.calls, scanned:_nf.scanned, skipped:_nf.skipped}), nfReset:()=>{ _nf.calls=_nf.scanned=_nf.skipped=0; }, cpuReset:()=>{ _cpuI=0; _cpuFill=0; },
+  liteInfo:()=>({on:LITE.on, auto:_liteAuto, recovered:_liteRecovered, locked:_liteLocked, fast:_liteFast}), _setLiteAuto:(on)=>{ setLite(on); _liteAuto=on; },
+  _perfTickSim:(fps,secs)=>{ for(let k=0;k<secs;k++){ _pfT=0; _pfN=0; _pfLast=1; const fd=1000/fps; let t=1; for(let i=0;i<=fps;i++){ t+=fd; perfTick(t); } } }, _nearestCmp:()=>{ const a=nearestFrame(car.pos), b=nearestFrameRef(car.pos); return {same:a===b, x:+car.pos.x.toFixed(2), g:car.grounded}; },
+  levelTiles:()=>[...document.querySelectorAll('#levelGrid .lvlBtn')].map(b=>{ const r=b.querySelector('.hr'), cs=getComputedStyle(b); return {i:+b.dataset.i, locked:b.disabled, next:b.classList.contains('next'), three:b.classList.contains('three'), stars:b.querySelectorAll('.ts.on').length, starSlots:b.querySelectorAll('.ts').length, ring:r?{got:+r.dataset.got, miss:r.classList.contains('miss'), bg:getComputedStyle(r).backgroundImage, anim:getComputedStyle(r).animationName}:null, hoopCount:(b.querySelector('.hn')||{}).textContent||'', gold:!!b.querySelector('.gs:not(.off)'), score:(b.querySelector('.sc')||{}).textContent||'', bg:b.style.getPropertyValue('--bg'), anim:cs.animationName, h:b.getBoundingClientRect().height, label:b.getAttribute('aria-label')}; }),
+  medal:()=>{ const e=document.querySelector('#card .hoopMedal'); if(!e) return null; const r=e.querySelector('.ring'), cs=r?getComputedStyle(r):null; return {text:e.textContent, got:+e.dataset.got, total:+e.dataset.total, best:+e.dataset.best, isNew:e.classList.contains('new'), chain:e.classList.contains('chain'), bg:cs?cs.backgroundImage:'', anim:cs?cs.animationName:'', stars:[...document.querySelectorAll('#card .gradeHero .st')].map(x=>getComputedStyle(x).animationName), saved:(scores.levels[state.levelIndex]&&scores.levels[state.levelIndex].hoops)||0}; }, hoopTheme:()=>{ const L=state.level, H=L&&L._hoop; return H?{label:L._hoopLabel, flames:!!H.fl, flameScale:H.fl?+H.fl.scale.x.toFixed(3):null, flameOpacity:+hoopFlameMat.opacity.toFixed(3), flameUnlit:hoopFlameMat.type==='MeshBasicMaterial', tick:H.tick, rotZ:+H.m.rotation.z.toFixed(3), verts:H.m.geometry.attributes.position.count}:null; }, hoops:()=>{ const HS=state.level&&state.level._hoops; return HS&&HS.length?{n:HS.length, list:HS.map(H=>({x:H.x, y:+H.y.toFixed(2), hits:H.hits, done:H.done, punch:+H.punch.toFixed(3)})), total:state.hoops||0, chain:state.hoopChain||0, chains:state.hoopChains||0, unlit:HS[0].m.material.type, mats:new Set(HS.map(H=>H.m.material)).size}:null; }, hoop:()=>{ const H=state.level&&state.level._hoop; return H?{x:H.x, y:+H.y.toFixed(2), y0:H.y0, hits:H.hits, n:state.hoops||0, punch:+H.punch.toFixed(3), spin:+H.m.rotation.z.toFixed(2), t:+H.t.toFixed(2), carX:car.pos.x, carY:car.pos.y, unlit:H.m.material.type}:null; }, ambient:()=>({fanSpin:(state.level&&state.level._fans&&state.level._fans[0])?+state.level._fans[0].blades.rotation.y.toFixed(2):null, sawT:(state.level&&state.level._saw)?+state.level._saw.t.toFixed(2):null, kickT:(state.level&&state.level._kick)?+state.level._kick.t.toFixed(2):null, popT:(state.level&&state.level._pop)?+state.level._pop.t.toFixed(2):null, hoopT:(state.level&&state.level._hoop)?+state.level._hoop.t.toFixed(2):null, mode:state.mode, bonks:state.bonks||0}), sawStripeColor:()=>{ const S=state.level&&state.level._saw; if(!S) return null; const st=S.pv.children[0]; return {unlit:st.material.type, blocks:st.geometry.attributes.position.count}; }, seesaw:()=>{ const S=state.level&&state.level._saw; return S?{x:+S.x.toFixed(1), y:S.y, ang:+S.ang.toFixed(3), state:S.state, hits:S.hits, slams:S.slams, n:state.seesaws||0, carX:car.pos.x, air:!car.grounded, ei:+sawMat.emissiveIntensity.toFixed(2)}:null; }, _flatRuns:(mn)=>flatRuns(state.level,state.framesData,mn).map(r=>[+r.a.pos.x.toFixed(1),+r.b.pos.x.toFixed(1),+r.a.pos.y.toFixed(1)]), _steep:()=>{ const o=[]; for(const sg of state.framesData.segs) for(const f of sg.frames) if(f.normal.y<0.5) o.push(Math.round(f.pos.x)); return [...new Set(o)]; }, popRamp:()=>{ const Q=state.level&&state.level._pop; return Q?{x:Q.x, y:Q.y, h:+Q.h.toFixed(3), t:Q.t, hits:Q.hits, maxPops:Q.maxPops, rolls:Q.rolls, pops:state.pops||0, carX:car.pos.x, air:!car.grounded, scaleY:Q.m.scale.y}:null; }, setPopPhase:(t)=>{ const Q=state.level&&state.level._pop; if(Q){ Q.t=t; Q.cool=0; Q.aH=0; } }, popAssistInfo:()=>{ const Q=state.level&&state.level._pop; return Q?{assist:Q.assist, aH:+Q.aH.toFixed(3), holds:Q.holds, h:+Q.h.toFixed(3)}:null; }, trail:()=>trailInfo(), popHeight,
   hud:()=>{ const r=id=>{ const e=document.getElementById(id); if(!e||getComputedStyle(e).display==='none') return null; const b=e.getBoundingClientRect(); return {x:b.left,y:b.top,w:b.width,h:b.height}; }; return {score:r('scorePanel'), mult:r('multPanel'), grade:r('gradePanel'), tilt:r('tiltToggle'), music:r('musicBtn'), pause:r('pauseBtn'), fuel:r('fuelWrap'), combo:r('combo'), starHud:r('starHud'), comboShown:comboEl.classList.contains('show'), fuelCls:fuelWrapEl.className}; },
   forceCombo:(n)=>{ state.combo=n; state.mult=n; state.comboTimer=3; punchCombo(); updateHUD(); }, prewarms:()=>_prewarmN, programs:()=>renderer.info.programs.length, pTex:()=>!!pMat.map, staticFrozen:()=>{ let n=0,f=0; for(const G of [trackGroup,decorGroup]) G.traverse(o=>{ if(o!==G){ n++; if(!o.matrixAutoUpdate) f++; } }); return {n,f}; },
   kicker:()=>{ const K=state.level&&state.level._kick; return K?{x:K.x, cx:K.cx, amp:K.amp, hits:K.hits, kicks:state.kicks||0, carX:car.pos.x, air:!car.grounded}:null; }, seaFx:()=>({fog:seaMat.fog, ei:seaMat.emissiveIntensity, embers:seaState.embers||0, caps:seaState.caps||0}), calls:()=>renderer.info.render.calls,
