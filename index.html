@@ -1208,7 +1208,8 @@ function sampleFrames(framesData, globalS){
 
 const TRACK_W = 5.0, TRACK_T = 0.78;
 const RIDE = 0.04; // v9: car origin = wheel contact (wheel bottom is -0.034 local). v8 used 0.95 → car hovered ~0.92 above the road.
-function clearGroup(g){ while(g.children.length){ const c=g.children.pop(); if(c.isInstancedMesh) c.dispose(); else if(c.geometry) c.geometry.dispose(); } }
+function clearGroup(g){ while(g.children.length){ const c=g.children.pop(); // v36 TECH: dispose nested meshes too (pickups/props are sub-groups; v9–v35 leaked their geometries every level load)
+    c.traverse(o=>{ if(o.isInstancedMesh) o.dispose(); if(o.geometry && o.geometry!==flagGeo) o.geometry.dispose(); }); } }
 
 const MERGE_CHUNK = 90; const _mergeStat = { chunks:0, railPieces:0 }; // v35: static track merged per material AND per 90-unit x chunk (was one mesh per material spanning the whole level, never culled)
 function mergeStatic(group){ // v9: one draw call per material instead of one per plank
@@ -1232,8 +1233,25 @@ function mergeStatic(group){ // v9: one draw call per material instead of one pe
     e.geos.forEach(g=>g.dispose());
   }
 }
+/* v36 VISUAL: waving pennant flags on poles beside the track (alternating sides, themed accent / white / rail colours).
+   One InstancedMesh per level; the cloth wave runs in the vertex shader (uTime + per-flag phase), so no per-frame CPU work besides 1 uniform. */
+const FLAGS = { H:4.2, MAX:64 }; const _flagSpots = []; const _flagStat = { n:0, t:0 };
+const flagGeo = new THREE.PlaneGeometry(2.6, 1.4, 8, 1); flagGeo.translate(-1.3, -0.7, 0); // hangs from pole top, trails toward -x
+{ const pa = flagGeo.attributes.position; for(let i=0;i<pa.count;i++){ const x = pa.getX(i); pa.setY(i, pa.getY(i) * (1 + x/2.6*0.6)); } } // tapers to a pennant point
+const flagMat = new THREE.MeshLambertMaterial({ color:0xffffff, emissive:0x404040, side:THREE.DoubleSide });
+const _flagU = { value:0 };
+flagMat.onBeforeCompile = sh => { sh.uniforms.uTime = _flagU;
+  sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace('#include <begin_vertex>',
+    '#include <begin_vertex>\n float fw = -position.x; float ph = instanceMatrix[3].x*0.37 + instanceMatrix[3].z*0.21;\n transformed.z += sin(uTime*7.0 - fw*3.2 + ph) * 0.22 * fw;\n transformed.y += sin(uTime*5.0 - fw*2.4 + ph) * 0.06 * fw;'); };
+function updateFlags(dt){ _flagStat.t += Math.min(dt||0.016, 0.05); _flagU.value = _flagStat.t; }
+/* v36 TECH: retry/respawn on the same level reuses the built track + decor instead of rebuilding them
+   (buildTrackMeshes+mergeStatic was ~220 ms of a ~280 ms hitch per retry on SwiftShader). Materials of the
+   previous build are now disposed when the track IS rebuilt (v9–v35 leaked 8 materials per level load). */
+const _trk = { key:null, theme:null, builds:0, reuses:0, matsDisposed:0, mats:[] };
 function buildTrackMeshes(framesData, theme){
+  _trk.key = null; _trk.builds++;
   clearGroup(trackGroup); clearGroup(decorGroup);
+  for(const m of _trk.mats){ m.dispose(); _trk.matsDisposed++; } _trk.mats.length = 0; _flagSpots.length = 0;
   const matTrack = new THREE.MeshStandardMaterial({ color:theme.track, metalness:0.28, roughness:0.55 });
   const matUnder = new THREE.MeshStandardMaterial({ color:0x1a1520, metalness:0.4, roughness:0.7 });
   const matRail = new THREE.MeshStandardMaterial({ color:theme.rail, metalness:0.55, roughness:0.35, emissive:theme.rail, emissiveIntensity:0.32 });
@@ -1280,6 +1298,12 @@ function buildTrackMeshes(framesData, theme){
         }
       }
     }
+    // v36 VISUAL: pennant flag spots every ~38 units on flat-ish track, alternating sides (poles merge with the static decor)
+    { let run = 0; for(let i=1;i<seg.frames.length;i++){ const f = seg.frames[i]; run += f.pos.distanceTo(seg.frames[i-1].pos);
+        if(run >= 38 && f.normal.y > 0.9 && _flagSpots.length < FLAGS.MAX){ run = 0; const side = (_flagSpots.length % 2) ? 1 : -1;
+          const base = f.pos.clone().add(f.binormal.clone().multiplyScalar(side * (TRACK_W*0.5 + 0.7)));
+          const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, FLAGS.H, 6), matAccent); pole.position.copy(base).add(new THREE.Vector3(0, FLAGS.H/2 - 0.3, 0)); decorGroup.add(pole);
+          _flagSpots.push(base.add(new THREE.Vector3(0, FLAGS.H - 0.3 - 0.05, 0))); } } }
     // Glow rail tubes along edges (thin, above surface)
     for(const side of [-1, 1]){
       const pts = seg.frames.map(f => f.pos.clone()
@@ -1336,7 +1360,12 @@ function buildTrackMeshes(framesData, theme){
   arch.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(end.tangent, end.normal, end.binormal));
   decorGroup.add(arch);
   mergeStatic(trackGroup); mergeStatic(decorGroup);
+  { const ms=new Set(); for(const G of [trackGroup, decorGroup]) G.traverse(o=>{ if(o.material && !Array.isArray(o.material)) ms.add(o.material); }); _trk.mats.push(...ms); }
   for(const G of [trackGroup, decorGroup]) G.traverse(o=>{ if(o!==G && !o.userData.dynamic){ o.updateMatrix(); o.matrixAutoUpdate=false; } }); // v19 TECH: static track/decor never recompose their matrices
+  if(_flagSpots.length){ const fl = new THREE.InstancedMesh(flagGeo, flagMat, _flagSpots.length); fl.userData.dynamic = true; fl.frustumCulled = false;
+    const cols = [0xff4d6d, 0xffd23f, 0x3fa9ff, 0x4be37a], c = new THREE.Color(), m4 = new THREE.Matrix4();
+    _flagSpots.forEach((p, k)=>{ m4.makeTranslation(p.x, p.y, p.z); fl.setMatrixAt(k, m4); fl.setColorAt(k, c.set(cols[k % 4])); });
+    decorGroup.add(fl); } _flagStat.n = _flagSpots.length;
 }
 
 function nearestFrameToXY(framesData, x, y){
@@ -2263,7 +2292,8 @@ function startLevel(idx, endless=false, fromCheckpoint=false){
   const th = applyTheme(level.theme);
   audio.music(level.theme); // v13: each world has its own tune
   state.framesData = buildFrames(level.segments);
-  buildTrackMeshes(state.framesData, th);
+  if(!endless && _trk.key === level.segments && _trk.theme === th && trackGroup.children.length){ _trk.reuses++; } // v36: same level again → keep meshes
+  else { buildTrackMeshes(state.framesData, th); if(!endless){ _trk.key = level.segments; _trk.theme = th; } }
   buildPickups(level, state.framesData);
 
   // Mark prior checkpoints as collected when respawning past them
@@ -3555,7 +3585,7 @@ function frame(now){
   for(const n of carVisual.nozzles){
     n.material.emissiveIntensity = (input.thrust && state.fuel>0 && state.mode==='play') ? 1.2 : 0.25;
   }
-  updateContactShadow(); updateShocks(raw); updateSkids(raw); updateSky(raw); updateHorizon(); updateBirds(raw); updateSea(raw); updateFinale(raw);
+  updateContactShadow(); updateShocks(raw); updateSkids(raw); updateSky(raw); updateHorizon(); updateBirds(raw); updateFlags(raw); updateSea(raw); updateFinale(raw);
   if(!document.hidden){ const _cpu1=performance.now(); renderer.render(scene, camera); cpuMeter(_cpu1-_cpu0, performance.now()-_cpu1); perfTick(now); } // v15: no GPU work while backgrounded
   requestAnimationFrame(frame);
 }
@@ -3625,7 +3655,7 @@ requestAnimationFrame(frame);
 
 // Expose for smoke tests
 window.__RSP = {
-  version:35, birds:()=>({..._birdStat, n:BIRDS.N, visible:birds.visible}), mergeStat:()=>({..._mergeStat}), horizon:()=>({..._hzStat, visible:horizon.visible, verts:_hzGeo.attributes.position.count, x:+horizon.position.x.toFixed(2), camX:+camera.position.x.toFixed(2)}), carScreen:()=>{ const v=carVisual.group.position.clone().project(camera); return {x:(v.x+1)/2*innerWidth, y:(1-v.y)/2*innerHeight}; }, camStat:()=>({..._camStat}), _setFovFast:(f)=>{ camera.fov=f; setFovFast(camera); }, flame:()=>({visible:carVisual.flame.visible, k:+_flameSt.k.toFixed(3), len:+carVisual.flame.scale.x.toFixed(3), peak:+_flameSt.peak.toFixed(3), frames:_flameSt.frames, blend:carVisual.flame.material.blending, rgba:carVisual.flame.geometry.attributes.color.itemSize===4, verts:carVisual.flame.geometry.attributes.position.count}), carEnv:()=>({key:state.carEnvKey||null, built:_envBuilt, cached:Object.keys(_envCache).length, mats:Object.keys(CAR_ENV_K).map(k=>({k, env:!!carVisual.mats[k].envMap, i:carVisual.mats[k].envMapIntensity, same:carVisual.mats[k].envMap===_envCache[state.carEnvKey]}))}), _lookCheck:()=>{ const c=camera.clone(); c.lookAt(camState.look); return {dq:1-Math.abs(c.quaternion.dot(camera.quaternion))}; }, _projCheck:()=>{ const a=camera.projectionMatrix.elements.slice(), ai=camera.projectionMatrixInverse.elements.slice(); const c=camera.clone(); c.updateProjectionMatrix(); let d=0, di=0; for(let i=0;i<16;i++){ d=Math.max(d,Math.abs(a[i]-c.projectionMatrix.elements[i])); di=Math.max(di,Math.abs(ai[i]-c.projectionMatrixInverse.elements[i])); } return {d, di, fov:camera.fov}; }, cpuStats, nfStats:()=>({calls:_nf.calls, scanned:_nf.scanned, skipped:_nf.skipped}), nfReset:()=>{ _nf.calls=_nf.scanned=_nf.skipped=0; }, cpuReset:()=>{ _cpuI=0; _cpuFill=0; },
+  version:36, flags:()=>({..._flagStat}), track:()=>({builds:_trk.builds, reuses:_trk.reuses, matsDisposed:_trk.matsDisposed, mats:_trk.mats.length, geometries:renderer.info.memory.geometries}), birds:()=>({..._birdStat, n:BIRDS.N, visible:birds.visible}), mergeStat:()=>({..._mergeStat}), horizon:()=>({..._hzStat, visible:horizon.visible, verts:_hzGeo.attributes.position.count, x:+horizon.position.x.toFixed(2), camX:+camera.position.x.toFixed(2)}), carScreen:()=>{ const v=carVisual.group.position.clone().project(camera); return {x:(v.x+1)/2*innerWidth, y:(1-v.y)/2*innerHeight}; }, camStat:()=>({..._camStat}), _setFovFast:(f)=>{ camera.fov=f; setFovFast(camera); }, flame:()=>({visible:carVisual.flame.visible, k:+_flameSt.k.toFixed(3), len:+carVisual.flame.scale.x.toFixed(3), peak:+_flameSt.peak.toFixed(3), frames:_flameSt.frames, blend:carVisual.flame.material.blending, rgba:carVisual.flame.geometry.attributes.color.itemSize===4, verts:carVisual.flame.geometry.attributes.position.count}), carEnv:()=>({key:state.carEnvKey||null, built:_envBuilt, cached:Object.keys(_envCache).length, mats:Object.keys(CAR_ENV_K).map(k=>({k, env:!!carVisual.mats[k].envMap, i:carVisual.mats[k].envMapIntensity, same:carVisual.mats[k].envMap===_envCache[state.carEnvKey]}))}), _lookCheck:()=>{ const c=camera.clone(); c.lookAt(camState.look); return {dq:1-Math.abs(c.quaternion.dot(camera.quaternion))}; }, _projCheck:()=>{ const a=camera.projectionMatrix.elements.slice(), ai=camera.projectionMatrixInverse.elements.slice(); const c=camera.clone(); c.updateProjectionMatrix(); let d=0, di=0; for(let i=0;i<16;i++){ d=Math.max(d,Math.abs(a[i]-c.projectionMatrix.elements[i])); di=Math.max(di,Math.abs(ai[i]-c.projectionMatrixInverse.elements[i])); } return {d, di, fov:camera.fov}; }, cpuStats, nfStats:()=>({calls:_nf.calls, scanned:_nf.scanned, skipped:_nf.skipped}), nfReset:()=>{ _nf.calls=_nf.scanned=_nf.skipped=0; }, cpuReset:()=>{ _cpuI=0; _cpuFill=0; },
   liteInfo:()=>({on:LITE.on, auto:_liteAuto, recovered:_liteRecovered, locked:_liteLocked, fast:_liteFast}), _setLiteAuto:(on)=>{ setLite(on); _liteAuto=on; },
   _perfTickSim:(fps,secs)=>{ for(let k=0;k<secs;k++){ _pfT=0; _pfN=0; _pfLast=1; const fd=1000/fps; let t=1; for(let i=0;i<=fps;i++){ t+=fd; perfTick(t); } } }, _nearestCmp:()=>{ const a=nearestFrame(car.pos), b=nearestFrameRef(car.pos); return {same:a===b, x:+car.pos.x.toFixed(2), g:car.grounded}; },
   levelTiles:()=>[...document.querySelectorAll('#levelGrid .lvlBtn')].map(b=>{ const r=b.querySelector('.hr'), cs=getComputedStyle(b); return {i:+b.dataset.i, locked:b.disabled, next:b.classList.contains('next'), three:b.classList.contains('three'), stars:b.querySelectorAll('.ts.on').length, starSlots:b.querySelectorAll('.ts').length, ring:r?{got:+r.dataset.got, miss:r.classList.contains('miss'), bg:getComputedStyle(r).backgroundImage, anim:getComputedStyle(r).animationName}:null, hoopCount:(b.querySelector('.hn')||{}).textContent||'', gold:!!b.querySelector('.gs:not(.off)'), score:(b.querySelector('.sc')||{}).textContent||'', bg:b.style.getPropertyValue('--bg'), anim:cs.animationName, h:b.getBoundingClientRect().height, label:b.getAttribute('aria-label')}; }),
