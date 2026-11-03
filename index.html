@@ -321,7 +321,9 @@ const audio = (()=>{
     checkpoint(){ tone(640,0.08,'sine',0.1); tone(960,0.12,'triangle',0.1); tone(1280,0.1,'sine',0.07); },
     softpop(){ tone(520,0.06,'sine',0.08); tone(780,0.1,'triangle',0.07); noise(0.08,0.08); },
     win(){ duck(0.3,0.9); tone(523,0.12,'triangle',0.12); setTimeout(()=>tone(659,0.12,'triangle',0.12),90); setTimeout(()=>tone(784,0.22,'triangle',0.14),180); },
-    tick(){ tone(180,0.03,'square',0.04); }
+    tick(){ tone(180,0.03,'square',0.04); },
+    grind(v=0.55){ noise(0.09+0.05*v,0.05+0.04*v); tone(190+40*v,0.07,'sawtooth',0.025+0.02*v,90); }, // v33 soft wall-ride grind (kid-safe scrape, never a crash)
+    skid(){ noise(0.14,0.1); tone(110,0.1,'sawtooth',0.04,-40); } // v33 brief rubber chirp on a hard landing
   };
 })();
 
@@ -1969,6 +1971,7 @@ function updateHoop(dt){
       for(let k=0;k<36;k++){ const a = k/36*Math.PI*2, c = C[k%4], v = 5 + Math.random()*3; spawnParticle(H.x, H.y + Math.sin(a)*HOOP_R, H.z + Math.cos(a)*HOOP_R, 2 + Math.random()*3, Math.sin(a)*v, Math.cos(a)*v, 0.8 + Math.random()*0.5, c[0], c[1], c[2]); }
       audio.coin(); if(audio.boost) audio.boost(); haptic(18); state.shake = Math.max(state.shake, 0.15);
       addScore(200, chainLv ? L._hoopLabel + ' ' + state.hoopChain + '!' : L._hoopLabel, 'combo');
+      triggerCine('hoop'); // v33 mid-run swoop on hoop catch
       if(chainLv && state.hoopChain >= HS.length){ // threaded every hoop in one flight
         state.hoopChains = (state.hoopChains||0) + 1;
         for(let k=0;k<60;k++){ const a = k/60*Math.PI*2, v = 7 + Math.random()*4, hue = k/60; const c = _hoopRGB(hue); spawnParticle(H.x, H.y + Math.sin(a)*HOOP_R*1.4, H.z + Math.cos(a)*HOOP_R*1.4, 3 + Math.random()*3, Math.sin(a)*v, Math.cos(a)*v, 1.0 + Math.random()*0.6, c[0], c[1], c[2]); }
@@ -2173,7 +2176,7 @@ function startLevel(idx, endless=false, fromCheckpoint=false){
     state.mult=1; state.combo=0; state.comboTimer=0;
     state.fuel=Math.max(keepCp.fuelFloor||0.45, state.fuel||0.45);
   }
-  state.shake=0; state.fovPunch=0; state.squash=0; state.cine=null; state.finale=null; finaleCard=null; state.slowmo=0; state.cineCount=0;
+  state.shake=0; state.fovPunch=0; state.squash=0; state.cine=null; state.finale=null; finaleCard=null; state.slowmo=0; state.cineCount=0; state.cineUsedAt=0; state.cineReason=''; state.wallRide=false; state.wallRideFrames=0; state.grindSparks=0; state.skids=0; _grindCool=0; _wrWas=false; if(typeof _skStat!=='undefined'){ _skStat.spawned=0; _skStat.lastColor=''; }
   susp.cF=susp.cR=SUSP.sag; susp.vF=susp.vR=0; susp.hF=susp.hR=0; susp.peak=0; susp.kicks=0;
   state.grade='☆☆☆'; state.starGrade=0; state.chunks=[];
   particles.clear();
@@ -2267,18 +2270,20 @@ function makeEndlessChunk(n){
   return L('Endless '+ (n+1), theme, [wp], stars, smashables, 'How far can you go?', checkpoints, boostPads, routes, props);
 }
 
+/* v33 TECH: orientCar used to clone 3 vectors and allocate a Quaternion + Matrix4 on every airborne physics step
+   (often 2–3× per rendered frame). That was the last big physicsStep allocator left after sampleInto. Scratch objects
+   below make it allocation-free; look is identical. */
+const _ocT=new THREE.Vector3(), _ocN=new THREE.Vector3(), _ocB=new THREE.Vector3(), _ocS=new THREE.Vector3(), _ocQ=new THREE.Quaternion(), _ocM=new THREE.Matrix4();
 function orientCar(fr, pitch){
   // base from track frame, extra pitch around binormal when airborne
-  const tang = fr.tangent.clone();
-  const norm = fr.normal.clone();
-  const bin = fr.binormal.clone();
+  _ocT.copy(fr.tangent); _ocN.copy(fr.normal); _ocB.copy(fr.binormal);
   if(Math.abs(pitch)>0.001){
-    const q = new THREE.Quaternion().setFromAxisAngle(bin, pitch);
-    tang.applyQuaternion(q); norm.applyQuaternion(q);
+    _ocQ.setFromAxisAngle(_ocB, pitch);
+    _ocT.applyQuaternion(_ocQ); _ocN.applyQuaternion(_ocQ);
   }
-  const side = bin.crossVectors(tang, norm).normalize(); // v10 fix: track binormal points -z, which made this basis left-handed (det -1) so the extracted quaternion under-pitched the car on every slope; build a proper right-handed basis instead
-  const m = new THREE.Matrix4().makeBasis(tang, norm, side);
-  car.quat.setFromRotationMatrix(m);
+  _ocS.crossVectors(_ocT, _ocN).normalize(); // v10 fix: right-handed basis (x=forward, y=up, z=x×y)
+  _ocM.makeBasis(_ocT, _ocN, _ocS);
+  car.quat.setFromRotationMatrix(_ocM);
   carVisual.group.quaternion.copy(car.quat);
   carVisual.group.position.copy(car.pos);
 }
@@ -2695,7 +2700,7 @@ function nearestFrame(pos){
    per-axle spring-damper driven by real load: gravity·n + v²·κ (loop bottoms squat, crests unload), accel squat,
    brake dive, ground lean and landing impacts. */
 const susp = { cF:SUSP.sag, cR:SUSP.sag, vF:0, vR:0, hF:0, hR:0, loadF:1, loadR:1, spin:0, peak:0, kicks:0 };
-const _sF=makeFrame(), _sR=makeFrame(), _sC=makeFrame(), _sA=makeFrame(), _sB=makeFrame(), _sG=makeFrame();
+const _sF=makeFrame(), _sR=makeFrame(), _sC=makeFrame(), _sA=makeFrame(), _sB=makeFrame(), _sG=makeFrame(), _sRF=makeFrame(), _sLF=makeFrame(), _sDF=makeFrame(), _sEnd=makeFrame(), _sLand=makeFrame(); // v33: more hot-path scratch frames (rocket lift / lip / gap / land)
 const _st=new THREE.Vector3(), _sn=new THREE.Vector3(), _sb=new THREE.Vector3(), _sm4=new THREE.Matrix4(), _sv=new THREE.Vector3();
 const _af=new THREE.Vector3(), _ab=new THREE.Vector3(), _au=new THREE.Vector3(), _ar=new THREE.Vector3(), _aq=new THREE.Quaternion();
 const _upDir=new THREE.Vector3(); // v13
@@ -2787,7 +2792,7 @@ function physicsStep(dt){
     if(input.thrust && state.fuel>0) car.speed = Math.min(MAX_SPEED*1.15, car.speed + THRUST_FORCE*0.45*dt);
     car.rocketHold = (input.thrust && state.fuel>0) ? (car.rocketHold||0) + dt : 0;
     if(car.rocketHold > 0.18 && !car.lipLaunch){ // v9: rocket lifts the car off the road
-      const rf = sampleSegment(state.framesData.segs[car.segIndex]||state.framesData.segs[0], car.s);
+      const rf = sampleInto(state.framesData.segs[car.segIndex]||state.framesData.segs[0], car.s, _sRF);
       car.grounded=false; car.lipLaunch=true; car.airGrace=0.35; car.rocketHold=0;
       car.vel.copy(rf.tangent).multiplyScalar(car.speed); car.vel.addScaledVector(rf.normal, 6);
       car.pitch=0; car.pitchVel=0; car.flipAcc=0;
@@ -2801,8 +2806,8 @@ function physicsStep(dt){
     // v7 JUMP FIX: launch off ramp lips (was glued to the down-slope = no jump)
     let lipS; { const lp=seg.lips; if(lp) for(let li=0;li<lp.length;li++){ const ls=lp[li]; if(prevS < ls && car.s >= ls){ lipS=ls; break; } } } // v10: no closure per step
     if(lipS !== undefined && car.speed > 5){
-      const lf = sampleSegment(seg, lipS);
-      const dirF = sampleSegment(seg, Math.max(0, lipS - 1.2)); // ramp face direction
+      const lf = sampleInto(seg, lipS, _sLF);
+      const dirF = sampleInto(seg, Math.max(0, lipS - 1.2), _sDF); // ramp face direction
       const v = Math.min(car.speed, 32);
       car.grounded = false;
       car.vel.copy(dirF.tangent).multiplyScalar(v * 0.82);
@@ -2820,7 +2825,7 @@ function physicsStep(dt){
       return;
     }
     if(car.s >= seg.length - 0.25){
-      const fr = sampleSegment(seg, seg.length);
+      const fr = sampleInto(seg, seg.length, _sEnd);
       const isLast = car.segIndex >= state.framesData.segs.length - 1;
       if(isLast){
         car.pos.copy(fr.pos).addScaledVector(fr.normal, RIDE);
@@ -2889,10 +2894,14 @@ function physicsStep(dt){
         const bx=car.pos.x-fr.tangent.x*1.2, by=car.pos.y-fr.tangent.y*1.2, bz=car.pos.z-fr.tangent.z*1.2;
         spawnParticle(bx, by, bz, -fr.tangent.x*6, 0.5, -fr.tangent.z*6, 0.2, 0.7, 0.85, 1.0);
       }
+      // v33 WALL-RIDE SPARKS: banked wall (normal tipped, not a flat road and not upside-down loop) sprays short world-tinted
+      // sparks from the wheels + a soft grind SFX. Kid-safe; never damages. Uses the existing particle pool (no new alloc).
+      wallRideJuice(dt, fr);
     }
 
   } else {
     // Airborne — weighty SP rotation
+    state.wallRide=false; _wrWas=false; _wrStat.active=false;
     if(car.vel.y < 0 && state.level && state.level._pop && popRampHit(_popFr, true)) return; // v19: a raised pop-up ramp catches a low landing too
     car.airTime += dt;
     if(car.loopDropT>0) car.loopDropT-=dt;
@@ -2970,7 +2979,7 @@ function physicsStep(dt){
           if(ls && car.s >= ls.length - 2.5 && car.segIndex < state.framesData.segs.length - 1){
             car.segIndex++;
             car.s = 0.4;
-            landFr = sampleSegment(state.framesData.segs[car.segIndex], car.s);
+            landFr = sampleInto(state.framesData.segs[car.segIndex], car.s, _sLand);
           }
         }
         car.speed = Math.max(8, car.vel.dot(landFr.tangent));
@@ -2990,6 +2999,7 @@ function physicsStep(dt){
             car.speed = Math.min(MAX_SPEED, car.speed*1.08 + 2);
             addScore((160 + Math.floor(car.airTime*90))*stk, stk>1 ? 'PERFECT LANDING! STREAK ×'+stk : 'PERFECT LANDING!', 'combo');
             audio.perfect(); state.fovPunch = Math.min(1, state.fovPunch + 0.25);
+            if(stk>=2) triggerCine('perfect'); // v33 mid-run swoop on perfect streak ≥2
           } else addScore((90 + Math.floor(car.airTime*70))*stk, stk>1 ? 'CLEAN! STREAK ×'+stk : 'CLEAN!', 'combo');
           state.bestStreak = Math.max(state.bestStreak||0, state.landStreak);
           audio.land(Math.min(1, impact/40)); haptic(14);
@@ -3258,6 +3268,77 @@ function updateShocks(dt){
   }
   if(act>_swStat.maxActive) _swStat.maxActive=act;
 }
+
+/* v33 VISUAL + JUICE: WALL-RIDE SPARKS / GRIND. On a heavily banked wall-ride the wheels spray short sparks tinted from
+   the world's ground colour (lifted toward gold), with a soft grind scrape. Never damages; freezes while paused; keeps
+   animating under grade/fail via the shared particle updater (set pieces already do). No per-frame allocation beyond the
+   existing particle pool writes. */
+let _grindCool = 0, _wrWas = false;
+const _wrStat = { frames:0, sparks:0, entries:0, sfx:0, lastNy:1, active:false };
+function wallRideJuice(dt, fr){
+  // Banked wall: normal tipped off world-up, but not a full upside-down loop ceiling.
+  const banked = car.grounded && Math.abs(car.speed) > 10 && fr.normal.y < 0.62 && fr.normal.y > -0.15;
+  state.wallRide = !!banked; _wrStat.active = !!banked; _wrStat.lastNy = +fr.normal.y.toFixed(3);
+  if(!banked){ _wrWas = false; return; }
+  state.wallRideFrames = (state.wallRideFrames||0) + 1; _wrStat.frames++;
+  if(!_wrWas){ _wrWas = true; _wrStat.entries++; triggerCine('wallride'); } // entry beat (cooldown-gated)
+  // Spray a few sparks from the wheel hubs along the wall, tinted by world dust → gold
+  const n = LITE.on ? 1 : 2;
+  const R = Math.min(1, _dustRGB[0]*0.55 + 0.55), G = Math.min(1, _dustRGB[1]*0.4 + 0.35), B = Math.min(1, _dustRGB[2]*0.25 + 0.1);
+  for(let i=0;i<n;i++){
+    const side = (i&1)?1:-1;
+    const hx = car.pos.x + fr.binormal.x*side*0.9 - fr.tangent.x*0.4;
+    const hy = car.pos.y + fr.binormal.y*side*0.9 + fr.normal.y*0.05 - 0.15;
+    const hz = car.pos.z + fr.binormal.z*side*0.9 - fr.tangent.z*0.4;
+    spawnParticle(hx, hy, hz,
+      fr.tangent.x*(-2-Math.random()*4) + fr.normal.x*(2+Math.random()*4) + (Math.random()-0.5)*2,
+      fr.tangent.y*(-2-Math.random()*4) + fr.normal.y*(2+Math.random()*4) + 1+Math.random()*3,
+      fr.tangent.z*(-2-Math.random()*4) + fr.normal.z*(2+Math.random()*4) + side*(2+Math.random()*3),
+      0.12+Math.random()*0.18, R, G, B);
+    state.grindSparks = (state.grindSparks||0) + 1; _wrStat.sparks++;
+  }
+  _grindCool -= dt;
+  if(_grindCool <= 0){ _grindCool = 0.16; if(audio.grind) audio.grind(Math.min(1, Math.abs(car.speed)/40)); _wrStat.sfx++; }
+}
+
+/* v33 VISUAL (cheap): tire skid / rubber streaks on hard landings — same pool pattern as v32 shockwave rings.
+   3 pooled planes, world-tinted, fade out, freeze on pause, keep animating under grade. */
+const _skCv=document.createElement('canvas'); _skCv.width=64; _skCv.height=16;
+{ const x=_skCv.getContext('2d'); const g=x.createLinearGradient(0,0,64,0);
+  g.addColorStop(0,'rgba(0,0,0,0)'); g.addColorStop(0.2,'rgba(30,30,30,0.55)'); g.addColorStop(0.5,'rgba(20,20,20,0.85)');
+  g.addColorStop(0.8,'rgba(30,30,30,0.55)'); g.addColorStop(1,'rgba(0,0,0,0)');
+  x.fillStyle=g; x.fillRect(0,2,64,12); }
+const _skTex = new THREE.CanvasTexture(_skCv), _skGeo = new THREE.PlaneGeometry(1,1);
+const SKIDS = []; const _skStat = { spawned:0, maxActive:0, lastColor:'' };
+for(let i=0;i<3;i++){
+  const m = new THREE.Mesh(_skGeo, new THREE.MeshBasicMaterial({map:_skTex, transparent:true, depthWrite:false, opacity:0, polygonOffset:true, polygonOffsetFactor:-2, color:0x222222}));
+  m.renderOrder=2; m.visible=false; scene.add(m);
+  SKIDS.push({m, t:1, dur:0.85, len:1.6, a:0.7});
+}
+let _skNext=0;
+function spawnSkid(fr, len, col){
+  const S = SKIDS[_skNext]; _skNext=(_skNext+1)%SKIDS.length;
+  _shM.makeBasis(fr.tangent, _shB.copy(fr.binormal).negate(), fr.normal); S.m.quaternion.setFromRotationMatrix(_shM);
+  S.m.position.copy(fr.pos).addScaledVector(fr.normal, 0.04).addScaledVector(fr.tangent, -0.4);
+  S.m.material.color.copy(col).multiplyScalar(0.35); S.t=0; S.dur=0.85; S.len=len; S.a=0.7; S.m.visible=true; S.m.material.opacity=0.7;
+  S.m.scale.set(len*2.2, 0.55, 1);
+  _skStat.spawned++; _skStat.lastColor=S.m.material.color.getHexString(); state.skids=(state.skids||0)+1;
+}
+function updateSkids(dt){
+  const run = state.mode==='play' || state.mode==='grade' || state.mode==='fail';
+  const hide = !(run || state.mode==='pause' || state.mode==='paused');
+  let act=0;
+  for(const S of SKIDS){
+    if(S.t>=1){ if(S.m.visible) S.m.visible=false; continue; }
+    if(hide){ S.t=1; S.m.visible=false; continue; }
+    if(run) S.t=Math.min(1, S.t + dt/S.dur);
+    act++;
+    S.m.material.opacity = S.a*Math.pow(1-S.t,1.2);
+    S.m.visible = S.t<1;
+  }
+  if(act>_skStat.maxActive) _skStat.maxActive=act;
+}
+
 function landBurst(pos, fr, impact, q){ // q: 2 perfect, 1 clean, 0 sloppy
   impact = impact||0;
   const n = 14 + Math.min(16, Math.floor(impact/2.5)), R=_dustRGB[0], G=_dustRGB[1], B=_dustRGB[2];
@@ -3271,6 +3352,24 @@ function landBurst(pos, fr, impact, q){ // q: 2 perfect, 1 clean, 0 sloppy
   if(q===2){ spawnShock(fr, 3.4+big, _shockGold, 0.95, 0.5, 0); spawnShock(fr, 2.0+big*0.5, _shockWhite, 0.9, 0.3, 0.06); _swStat.perfect++; }
   else if(q===1) spawnShock(fr, 2.6+big, _shockTint, 0.85, 0.42, 0);
   else spawnShock(fr, 1.8+big*0.6, _shockDull, 0.6, 0.35, 0);
+  if(impact > 18){ spawnSkid(fr, Math.min(2.4, 0.9+impact/22), q===2 ? _shockGold : _shockTint); if(audio.skid) audio.skid(); } // v33 tire rubber streak on hard landings
+}
+
+
+/* v33 PRESENTATION: mid-run cinematic beat. Original Stunt Paradise swoops the camera mid-stunt, not only at the finish.
+   One short FOV/pull-back swoop (+ optional soft slow-mo) on hoop catch, perfect-landing streak ≥2, or first wall-ride entry
+   of a stretch. Cooldown 5.5 s so it cannot spam; skipped while a cine is already running; kid-safe (never fails a landing). */
+function triggerCine(reason){
+  if(state.mode!=='play') return false;
+  const now = performance.now();
+  if(state.cine) return false;
+  if(state.cineUsedAt && now - state.cineUsedAt < 5500) return false;
+  state.cine = { t:0, dur:0.9, reason:reason||'' };
+  state.cineCount = (state.cineCount||0) + 1;
+  state.cineUsedAt = now; state.cineReason = reason||'';
+  if(!(state.slowmoUsedAt > now - 4000)){ state.slowmo = 0.38; state.slowmoScale = 0.55; state.slowmoUsedAt = now; }
+  state.fovPunch = Math.min(1, (state.fovPunch||0) + 0.32);
+  return true;
 }
 
 /* Camera — cinematic third-person, always frames the Roadster */
@@ -3385,7 +3484,7 @@ function frame(now){
   for(const n of carVisual.nozzles){
     n.material.emissiveIntensity = (input.thrust && state.fuel>0 && state.mode==='play') ? 1.2 : 0.25;
   }
-  updateContactShadow(); updateShocks(raw); updateSky(raw); updateSea(raw); updateFinale(raw);
+  updateContactShadow(); updateShocks(raw); updateSkids(raw); updateSky(raw); updateSea(raw); updateFinale(raw);
   if(!document.hidden){ const _cpu1=performance.now(); renderer.render(scene, camera); cpuMeter(_cpu1-_cpu0, performance.now()-_cpu1); perfTick(now); } // v15: no GPU work while backgrounded
   requestAnimationFrame(frame);
 }
@@ -3455,7 +3554,7 @@ requestAnimationFrame(frame);
 
 // Expose for smoke tests
 window.__RSP = {
-  version:32, carScreen:()=>{ const v=carVisual.group.position.clone().project(camera); return {x:(v.x+1)/2*innerWidth, y:(1-v.y)/2*innerHeight}; }, camStat:()=>({..._camStat}), _setFovFast:(f)=>{ camera.fov=f; setFovFast(camera); }, flame:()=>({visible:carVisual.flame.visible, k:+_flameSt.k.toFixed(3), len:+carVisual.flame.scale.x.toFixed(3), peak:+_flameSt.peak.toFixed(3), frames:_flameSt.frames, blend:carVisual.flame.material.blending, rgba:carVisual.flame.geometry.attributes.color.itemSize===4, verts:carVisual.flame.geometry.attributes.position.count}), carEnv:()=>({key:state.carEnvKey||null, built:_envBuilt, cached:Object.keys(_envCache).length, mats:Object.keys(CAR_ENV_K).map(k=>({k, env:!!carVisual.mats[k].envMap, i:carVisual.mats[k].envMapIntensity, same:carVisual.mats[k].envMap===_envCache[state.carEnvKey]}))}), _lookCheck:()=>{ const c=camera.clone(); c.lookAt(camState.look); return {dq:1-Math.abs(c.quaternion.dot(camera.quaternion))}; }, _projCheck:()=>{ const a=camera.projectionMatrix.elements.slice(), ai=camera.projectionMatrixInverse.elements.slice(); const c=camera.clone(); c.updateProjectionMatrix(); let d=0, di=0; for(let i=0;i<16;i++){ d=Math.max(d,Math.abs(a[i]-c.projectionMatrix.elements[i])); di=Math.max(di,Math.abs(ai[i]-c.projectionMatrixInverse.elements[i])); } return {d, di, fov:camera.fov}; }, cpuStats, nfStats:()=>({calls:_nf.calls, scanned:_nf.scanned, skipped:_nf.skipped}), nfReset:()=>{ _nf.calls=_nf.scanned=_nf.skipped=0; }, cpuReset:()=>{ _cpuI=0; _cpuFill=0; },
+  version:33, carScreen:()=>{ const v=carVisual.group.position.clone().project(camera); return {x:(v.x+1)/2*innerWidth, y:(1-v.y)/2*innerHeight}; }, camStat:()=>({..._camStat}), _setFovFast:(f)=>{ camera.fov=f; setFovFast(camera); }, flame:()=>({visible:carVisual.flame.visible, k:+_flameSt.k.toFixed(3), len:+carVisual.flame.scale.x.toFixed(3), peak:+_flameSt.peak.toFixed(3), frames:_flameSt.frames, blend:carVisual.flame.material.blending, rgba:carVisual.flame.geometry.attributes.color.itemSize===4, verts:carVisual.flame.geometry.attributes.position.count}), carEnv:()=>({key:state.carEnvKey||null, built:_envBuilt, cached:Object.keys(_envCache).length, mats:Object.keys(CAR_ENV_K).map(k=>({k, env:!!carVisual.mats[k].envMap, i:carVisual.mats[k].envMapIntensity, same:carVisual.mats[k].envMap===_envCache[state.carEnvKey]}))}), _lookCheck:()=>{ const c=camera.clone(); c.lookAt(camState.look); return {dq:1-Math.abs(c.quaternion.dot(camera.quaternion))}; }, _projCheck:()=>{ const a=camera.projectionMatrix.elements.slice(), ai=camera.projectionMatrixInverse.elements.slice(); const c=camera.clone(); c.updateProjectionMatrix(); let d=0, di=0; for(let i=0;i<16;i++){ d=Math.max(d,Math.abs(a[i]-c.projectionMatrix.elements[i])); di=Math.max(di,Math.abs(ai[i]-c.projectionMatrixInverse.elements[i])); } return {d, di, fov:camera.fov}; }, cpuStats, nfStats:()=>({calls:_nf.calls, scanned:_nf.scanned, skipped:_nf.skipped}), nfReset:()=>{ _nf.calls=_nf.scanned=_nf.skipped=0; }, cpuReset:()=>{ _cpuI=0; _cpuFill=0; },
   liteInfo:()=>({on:LITE.on, auto:_liteAuto, recovered:_liteRecovered, locked:_liteLocked, fast:_liteFast}), _setLiteAuto:(on)=>{ setLite(on); _liteAuto=on; },
   _perfTickSim:(fps,secs)=>{ for(let k=0;k<secs;k++){ _pfT=0; _pfN=0; _pfLast=1; const fd=1000/fps; let t=1; for(let i=0;i<=fps;i++){ t+=fd; perfTick(t); } } }, _nearestCmp:()=>{ const a=nearestFrame(car.pos), b=nearestFrameRef(car.pos); return {same:a===b, x:+car.pos.x.toFixed(2), g:car.grounded}; },
   levelTiles:()=>[...document.querySelectorAll('#levelGrid .lvlBtn')].map(b=>{ const r=b.querySelector('.hr'), cs=getComputedStyle(b); return {i:+b.dataset.i, locked:b.disabled, next:b.classList.contains('next'), three:b.classList.contains('three'), stars:b.querySelectorAll('.ts.on').length, starSlots:b.querySelectorAll('.ts').length, ring:r?{got:+r.dataset.got, miss:r.classList.contains('miss'), bg:getComputedStyle(r).backgroundImage, anim:getComputedStyle(r).animationName}:null, hoopCount:(b.querySelector('.hn')||{}).textContent||'', gold:!!b.querySelector('.gs:not(.off)'), score:(b.querySelector('.sc')||{}).textContent||'', bg:b.style.getPropertyValue('--bg'), anim:cs.animationName, h:b.getBoundingClientRect().height, label:b.getAttribute('aria-label')}; }),
@@ -3483,7 +3582,7 @@ window.__RSP = {
     return out; },
   coins:()=>{ const c=state.level&&state.level._coins; return {got:state.coins||0, n:c?c.n:0, gold:!!state.goldGot, hasGold:!!(state.level&&state.level.gold), goldPos:state.level&&state.level._gold?state.level._gold.userData.base.toArray():null}; },
   axes:()=>{ const q=car.quat; const ax=v=>new THREE.Vector3(...v).applyQuaternion(q).toArray().map(x=>+x.toFixed(3)); const seg=state.framesData.segs[car.segIndex]; const f=sampleSegment(seg,car.s); const sF=sampleSegment(seg,car.s+SUSP.axF), sR=sampleSegment(seg,car.s-SUSP.axR); return {x:ax([1,0,0]), y:ax([0,1,0]), z:ax([0,0,1]), t:f.tangent.toArray().map(x=>+x.toFixed(3)), n:f.normal.toArray().map(x=>+x.toFixed(3)), b:f.binormal.toArray().map(x=>+x.toFixed(3)), chord:sF.pos.clone().sub(sR.pos).normalize().toArray().map(x=>+x.toFixed(3)), dF:+sF.pos.distanceTo(f.pos).toFixed(3)}; },
-  cine:()=>({active:!!state.cine, k:state.cineK||0, count:state.cineCount||0, slowmo:state.slowmo||0, scale:state.slowmoScale}),
+  cine:()=>({active:!!state.cine, k:state.cineK||0, count:state.cineCount||0, slowmo:state.slowmo||0, scale:state.slowmoScale, reason:state.cineReason||'', usedAt:state.cineUsedAt||0}), wallRide:()=>({..._wrStat, sparks:state.grindSparks||0, frames:state.wallRideFrames||0, on:!!state.wallRide}), skids:()=>({..._skStat, active:SKIDS.filter(S=>S.m.visible).length, n:state.skids||0, pool:SKIDS.length, tex:SKIDS.every(S=>S.m.material.map===_skTex)}), _skidTest:()=>{ const f=state.framesData.segs[car.segIndex]||state.framesData.segs[0]; const fr=sampleInto(f, car.s, _sLand); spawnSkid(fr, 2.0, _shockTint); }, _cineTest:(r)=>triggerCine(r||'test'), _wrForce:(on)=>{ /* test helper: spray sparks as if banked */ if(!on){ state.wallRide=false; _wrWas=false; return; } const seg=state.framesData.segs[car.segIndex]||state.framesData.segs[0]; const fr=sampleInto(seg, car.s, _sC); fr.normal.y=Math.min(fr.normal.y, 0.4); car.grounded=true; car.speed=Math.max(car.speed, 22); wallRideJuice(0.016, fr); },
   engine:()=>audio.engineLevel(), particles:()=>({pool:particles.length, live:particles.reduce((a,p)=>a+(p.life>0?1:0),0)}), screen:()=>{const v=carVisual.group.position.clone().project(camera); return {x:(v.x+1)/2*innerWidth,y:(1-v.y)/2*innerHeight};}, pads:()=>({hits:state.padHits||0, n:(state.level&&state.level.bouncePads||[]).length}), loops:()=>state.framesData.segs.map(sg=>{const r=[];let inL=false,st=0;const N=Math.ceil(sg.length);for(let i=0;i<=N;i++){const f=sampleSegment(sg,Math.min(sg.length,i));if(f.normal.y<-0.5&&!inL){inL=true;st=i;} if(f.normal.y>-0.5&&inL){inL=false;r.push([st,i]);}}return r;}), perf:()=>({calls:renderer.info.render.calls, tris:renderer.info.render.triangles, dpr:dprNow, lite:LITE.on, far:camera.far, hitches:_pfHitch, worstMs:+_pfWorst.toFixed(1)}), setLite, autoPause, light:()=>({sun:sun.intensity, amb:amb.intensity, hemi:hemi.intensity, fogNear:scene.fog.near, fogFar:scene.fog.far}), levels:LEVELS.length, startLevel, showTitle, showSelect, state, car,
   getScore:()=>state.score, getMode:()=>state.mode, getStars:()=>state.starGrade, input,
   cam:()=>({x:camera.position.x,y:camera.position.y,z:camera.position.z,qx:camera.quaternion.x,qy:camera.quaternion.y,qz:camera.quaternion.z,qw:camera.quaternion.w}),
