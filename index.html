@@ -119,6 +119,8 @@ button.menu.gold{background:linear-gradient(180deg,#ffd76a,#e09020);color:#1a100
 @keyframes medalShine{to{transform:translateX(120%)}}
 @media (max-height:500px){.card{padding:14px 20px}.card h1{margin-bottom:0}.gradeHero{font-size:48px;margin:2px 0}.hoopMedal{margin:0 auto 6px;padding:4px 12px 4px 6px;font-size:14px;gap:8px}.hoopMedal .ring{width:30px;height:30px}.card .sub{margin-bottom:8px;font-size:12px}.oneMore{margin-top:0;font-size:15px}.btnRow{margin-top:6px}button.menu{padding:10px 18px}} /* v28: iPhone landscape keeps the buttons on screen with the medal added */
 @media (prefers-reduced-motion:reduce){.gradeHero .st,.hoopMedal,.hoopMedal .ring,.hoopMedal::after{animation:none!important}}
+@media (max-height:500px){.chRow{gap:5px;margin:0 auto 4px}.chRib{font-size:11px;padding:3px 9px}}
+.chT.all{color:#ffd23f}.chRow{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin:2px auto 8px}.chRib{font-size:clamp(12px,2.2vw,15px);font-weight:800;padding:5px 12px;border-radius:999px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);color:#bcd}.chRib.ever{color:#ffe08a;border-color:rgba(255,210,63,.5)}.chRib.now{color:#2a1a00;background:linear-gradient(100deg,#ffd23f 0%,#fff3b0 45%,#ffd23f 60%);background-size:220% 100%;border-color:#ffd23f;animation:chShine 1.6s ease-in-out infinite}@keyframes chShine{0%{background-position:120% 0}100%{background-position:-120% 0}}
 .oneMore{font-size:clamp(15px,2.8vw,20px);font-weight:800;color:#9cf;margin-top:4px;letter-spacing:.04em}
 #starHud{position:fixed;left:calc(env(safe-area-inset-left,10px) + 12px);top:calc(env(safe-area-inset-top,8px) + 56px);z-index:10;pointer-events:none;font-weight:800;font-size:clamp(12px,2.2vw,16px);background:rgba(0,0,0,.4);border-radius:10px;padding:4px 10px;display:none}
 #starHud .coin{color:#ffd24a}#starHud .gold{color:#ffcf3a;text-shadow:0 0 8px rgba(255,200,40,.9)}
@@ -805,7 +807,7 @@ const BIRDS = { N:9, z:-120, y:20 };
 const birdGeo = new THREE.BufferGeometry();
 birdGeo.setAttribute('position', new THREE.Float32BufferAttribute([0,0,0, -1.6,0.5,0, -0.5,0.15,0,  0,0,0, -0.5,0.15,0, -2.6,0.9,0.2,
   0,0,0, 0.5,0.15,0, 1.6,0.5,0,  0,0,0, 2.6,0.9,0.2, 0.5,0.15,0], 3));
-const birdMat = new THREE.MeshBasicMaterial({ color:0x2a2f3a, side:THREE.DoubleSide, fog:false, transparent:true, opacity:0.85 });
+const birdMat = new THREE.MeshBasicMaterial({ color:0x2a2f3a, side:THREE.DoubleSide, fog:false, transparent:true, opacity:0.85, forceSinglePass:true }); // v37 TECH: single pass — three.js two-pass DoubleSide transparency flipped side+needsUpdate twice per frame (v13 churn)
 const birds = new THREE.InstancedMesh(birdGeo, birdMat, BIRDS.N); birds.frustumCulled = false; birds.renderOrder = -1; scene.add(birds);
 const _bm = new THREE.Matrix4(), _bq = new THREE.Quaternion(), _bp = new THREE.Vector3(), _bs = new THREE.Vector3();
 const _birdStat = { t:0, frames:0, flap:0 };
@@ -997,6 +999,29 @@ const pTex=new THREE.CanvasTexture(_pTexCv);
 const pMat = new THREE.PointsMaterial({ size:1.2, map:pTex, vertexColors:true, transparent:true, opacity:1, depthWrite:false, blending:THREE.AdditiveBlending, sizeAttenuation:true });
 const pPoints = new THREE.Points(pGeo, pMat);
 scene.add(pPoints);
+
+/* v37 VISUAL: THEMED AMBIENT MOTES — a field of soft glowing specks drifting around the camera, one per theme:
+   desert sand glints, beach sea spray, industrial sparks, cyber neon bits, candy sprinkles, ice snowfall, volcano
+   embers rising, paradise fireflies. 140 points, one draw call, reuses the v19 soft sprite. */
+const MOTES = { N:140, W:120, H:46, D:70 };
+const MOTE_THEME = { desert:{c:[0xffe2a0,0xffc86a],vy:-0.4,vx:2.2,sz:0.55}, beach:{c:[0xdff6ff,0xffffff],vy:0.3,vx:1.4,sz:0.5},
+  industrial:{c:[0xffb040,0xff7020],vy:0.6,vx:0.6,sz:0.45}, cyber:{c:[0x40f0ff,0xff40d0],vy:0.5,vx:0.4,sz:0.5},
+  candy:{c:[0xff7ab8,0x8fe0ff,0xfff07a],vy:-0.9,vx:0.5,sz:0.6}, ice:{c:[0xffffff,0xdaf0ff],vy:-2.2,vx:0.9,sz:0.7},
+  volcano:{c:[0xff6a20,0xffc040],vy:2.0,vx:0.5,sz:0.6}, paradise:{c:[0xd8ff70,0xfff3a0],vy:0.2,vx:0.3,sz:0.55} };
+const moteGeo = new THREE.BufferGeometry(); const _mP = new Float32Array(MOTES.N*3), _mC = new Float32Array(MOTES.N*3), _mS = new Float32Array(MOTES.N);
+for(let i=0;i<MOTES.N;i++){ _mP[i*3]=(Math.random()-0.5)*MOTES.W; _mP[i*3+1]=Math.random()*MOTES.H-8; _mP[i*3+2]=-Math.random()*MOTES.D+12; _mS[i]=Math.random()*6.28; }
+moteGeo.setAttribute('position', new THREE.BufferAttribute(_mP,3).setUsage(THREE.DynamicDrawUsage)); moteGeo.setAttribute('color', new THREE.BufferAttribute(_mC,3));
+const moteMat = new THREE.PointsMaterial({ size:0.55, map:pTex, vertexColors:true, transparent:true, opacity:0.85, depthWrite:false, blending:THREE.AdditiveBlending, sizeAttenuation:true });
+const motes = new THREE.Points(moteGeo, moteMat); motes.frustumCulled = false; motes.renderOrder = 1; scene.add(motes);
+const _moteStat = { key:null, t:0, frames:0 }; const _mcol = new THREE.Color();
+function setMoteTheme(key){ const T = MOTE_THEME[key]||MOTE_THEME.paradise; _moteStat.key = key; moteMat.size = T.sz;
+  for(let i=0;i<MOTES.N;i++){ _mcol.set(T.c[i%T.c.length]); _mC[i*3]=_mcol.r; _mC[i*3+1]=_mcol.g; _mC[i*3+2]=_mcol.b; } moteGeo.attributes.color.needsUpdate = true; }
+function updateMotes(dt){ const T = MOTE_THEME[_moteStat.key]||MOTE_THEME.paradise; const d = Math.min(dt||0.016, 0.05); _moteStat.t += d; _moteStat.frames++;
+  const cx = camera.position.x, cy = camera.position.y, t = _moteStat.t, hw = MOTES.W/2;
+  for(let i=0;i<MOTES.N;i++){ const j=i*3; _mP[j] += (T.vx + Math.sin(t*0.9+_mS[i])*0.6)*d; _mP[j+1] += (T.vy + Math.cos(t*1.3+_mS[i])*0.35)*d;
+    let rx = _mP[j]-cx; if(rx>hw) _mP[j]-=MOTES.W; else if(rx<-hw) _mP[j]+=MOTES.W;
+    let ry = _mP[j+1]-(cy-14); if(ry>MOTES.H) _mP[j+1]-=MOTES.H; else if(ry<0) _mP[j+1]+=MOTES.H; }
+  moteGeo.attributes.position.needsUpdate = true; }
 // v10: fixed object pool + ring cursor — zero allocations, no shift()/splice() churn
 const particles = []; for(let i=0;i<MAX_P;i++) particles.push({x:0,y:0,z:0,vx:0,vy:0,vz:0,life:0,max:1,r:0,g:0,b:0});
 let _pCur=0, _pLive=0;
@@ -2245,7 +2270,7 @@ function applyTheme(key){
   const th = THEMES[key] || THEMES.desert;
   scene.background = new THREE.Color(th.sky);
   scene.fog = new THREE.Fog(th.fog, 50, 280);
-  setSeaTheme(key); // v17 animated sea / lava sea
+  setMoteTheme(key); setSeaTheme(key); // v17 animated sea / lava sea
   setSkyTheme(key, th); // v16: gradient sky + matching fog + cloud tint
   setCarEnv(key, th); // v31: car reflects this world's sky
   setDustTheme(th); // v32: landing dust + shockwave take this world's ground colour
@@ -2269,7 +2294,7 @@ function startLevel(idx, endless=false, fromCheckpoint=false){
   if(!keepCp){
     state.score=0; state.mult=1; state.combo=0; state.comboTimer=0;
     state.fuel=1; state.starsGot=0; state.smashes=0; state.checkpointsGot=0; state.boostsGot=0; state.propsGot=0;
-    state.flips=0; state.frontflips=0; state.backflips=0; state.airTimeTotal=0;
+    state.flips=0; state.frontflips=0; state.backflips=0; state.airTimeTotal=0; chReset(endless?-1:idx);
     state.cleanLands=0; state.thrustStyle=0; state.perfectLands=0; state.bestStreak=0;
     state.lastCheckpoint=null; state.coins=0; state.goldGot=false;
   } else {
@@ -2499,7 +2524,7 @@ function showTitle(){
 function _tileBg(th){ const c=k=>_hx(th[k]); return 'linear-gradient(180deg,'+c('sky')+' 0%,'+c('fog')+' 52%,'+c('ground')+' 53%,'+c('track')+' 100%)'; }
 function showSelect(){ // v30: postcard tiles with saved stars + hoop medal (see CSS note)
   state.mode='select'; showPlayUI(false);
-  let html='<h1>Select Level</h1><p class="sub">Finish for 1★ · collect stars & smash for more · catch each level\'s hoop!</p><div id="levelGrid" class="v30">';
+  let html='<h1>Select Level</h1><p class="sub">Finish for 1★ · collect stars & smash for more · catch each level\'s hoop! · 🎯 Challenges '+chTotal()+'/24</p><div id="levelGrid" class="v30">';
   let nextSet=false;
   for(let i=0;i<LEVELS.length;i++){
     const Lv=LEVELS[i], th=THEMES[Lv.theme]||THEMES.paradise;
@@ -2519,6 +2544,7 @@ function showSelect(){ // v30: postcard tiles with saved stars + hoop medal (see
       if(nH){ const ht=HOOP_THEMES[Lv.hoopTheme||'candy'], got=Math.min(nH, (bo&&bo.hoops)||0);
         meta+='<span class="hr'+(got?'':' miss')+'" data-got="'+got+'" style="background:repeating-conic-gradient('+_hx(ht.a)+' 0 30deg,'+_hx(ht.b)+' 30deg 60deg);box-shadow:inset 0 0 0 2px '+_hx(ht.rim)+'"></span>'+(nH>1?'<span class="hn">'+got+'/'+nH+'</span>':''); }
       if(Lv.gold) meta+='<span class="gs'+(bo&&bo.gold?'':' off')+'">✪</span>';
+      { const cb=(chLoad()[i]||0), cn=(cb&1)+((cb>>1)&1)+((cb>>2)&1); meta+='<span class="hn chT'+(cn===3?' all':'')+'">🎯'+cn+'/3</span>'; } // v37 challenges
     }
     const nm = Lv.name;
     html += '<button class="lvlBtn tile'+(unlocked?'':' locked')+(isNext?' next':'')+(stars>=3?' three':'')+'" data-i="'+i+'" '+(unlocked?'':'disabled ')+
@@ -2606,10 +2632,10 @@ function winRun(){
   const timeTxt = state.endless ? '' : (ghost.newBest ? (ghost.bestT!=null ? ' · ⏱ NEW BEST TIME '+ghost.t.toFixed(1)+'s! (was '+ghost.bestT.toFixed(1)+'s)' : ' · ⏱ '+ghost.t.toFixed(1)+'s — your ghost will race you next time') : (ghost.recValid && ghost.bestT!=null ? ' · ⏱ '+ghost.t.toFixed(1)+'s (best '+ghost.bestT.toFixed(1)+'s — beat your ghost!)' : ''));
   const next = state.levelIndex+1;
   const hasNext = !state.endless && next < LEVELS.length;
-  const hoopMedalHTML = state.endless ? '' : hoopMedal(); hoopPrevBest = 0;
+  const hoopMedalHTML = state.endless ? '' : hoopMedal(); hoopPrevBest = 0; const chHTML = chCardHTML();
   finaleCard = ()=>{
   document.getElementById('card').innerHTML='<h1>'+(state.endless?'Distance!':LEVELS[state.levelIndex].name)+'</h1>'+
-    '<div class="gradeHero">'+starSpans(state.starGrade)+'</div>'+hoopMedalHTML+
+    '<div class="gradeHero">'+starSpans(state.starGrade)+'</div>'+hoopMedalHTML+chHTML+
     '<p class="sub">Score '+state.score.toLocaleString()+' · Stars '+state.starsGot+'/'+state.starsTotal+
     ' · Flips '+state.flips+' (↑'+state.frontflips+' ↓'+state.backflips+') · Smash '+state.smashes+' · Clean '+state.cleanLands+' · Perfect '+(state.perfectLands||0)+
     (state.level&&state.level._coins?' · Coins '+(state.coins||0)+'/'+state.level._coins.n:'')+(state.level&&state.level.gold?(state.goldGot?' · ✪ GOLD STAR!':' · ✧ gold star hidden — try the ROCKET'):'')+timeTxt+'</p>'+
@@ -2625,6 +2651,30 @@ function winRun(){
   };
   if(!state.finale) { const f=finaleCard; finaleCard=null; f(); }
 }
+
+/* v37 CONTENT + CORE: STUNT CHALLENGES — three optional goals per level (24 in total). They tick live during a run
+   (CHALLENGE ✓ call-out + gold confetti over the car) and the best set per level is kept on this device only. */
+const CHALLENGES = [
+  [['flips',2,'Do 2 flips'],['smashes',3,'Smash 3 props'],['perfectLands',1,'1 perfect landing']],
+  [['backflips',1,'Do a backflip'],['frontflips',1,'Do a frontflip'],['airTimeTotal',4,'4 s of air time']],
+  [['smashes',4,'Smash 4 props'],['flips',1,'Do a flip'],['cleanLands',3,'3 clean landings']],
+  [['flips',2,'Do 2 flips'],['starsGot',4,'Grab 4 stars'],['airTimeTotal',5,'5 s of air time']],
+  [['flips',3,'Do 3 flips'],['cleanLands',3,'3 clean landings'],['airTimeTotal',5,'5 s of air time']],
+  [['backflips',2,'Do 2 backflips'],['perfectLands',1,'1 perfect landing'],['starsGot',3,'Grab 3 stars']],
+  [['flips',2,'Do 2 flips'],['smashes',2,'Smash 2 props'],['airTimeTotal',6,'6 s of air time']],
+  [['flips',4,'Do 4 flips'],['perfectLands',2,'2 perfect landings'],['airTimeTotal',8,'8 s of air time']]
+];
+const _ch = { done:0, pops:0, idx:-1 };
+function chLoad(){ try{ return JSON.parse(localStorage.getItem('rsp_ch')||'{}')||{}; }catch(e){ return {}; } }
+function chReset(i){ _ch.done=0; _ch.idx=i; }
+function chList(i){ return CHALLENGES[i]||[]; }
+function updateChallenges(){ if(state.endless || state.mode!=='play' || _ch.idx<0) return; const L=chList(_ch.idx);
+  for(let k=0;k<L.length;k++){ if(_ch.done&(1<<k)) continue; if((state[L[k][0]]||0) >= L[k][1]){ _ch.done|=(1<<k); _ch.pops++;
+    popup('CHALLENGE ✓ '+L[k][2], 'checkpoint'); try{ fireworkBurst(car.pos.x, car.pos.y+5, car.pos.z, 1); }catch(e){} } } }
+function chSave(){ if(state.endless||_ch.idx<0) return 0; const all=chLoad(); const best=(all[_ch.idx]||0)|_ch.done; all[_ch.idx]=best; try{ localStorage.setItem('rsp_ch', JSON.stringify(all)); }catch(e){} return best; }
+function chCardHTML(){ if(state.endless||_ch.idx<0) return ''; const best=chSave(); const L=chList(_ch.idx);
+  return '<div class="chRow">'+L.map((c,k)=>{ const now=_ch.done&(1<<k), ever=best&(1<<k); return '<span class="chRib'+(now?' now':ever?' ever':'')+'">'+(now||ever?'✓ ':'○ ')+c[2]+'</span>'; }).join('')+'</div>'; }
+function chTotal(){ const a=chLoad(); let n=0; for(const k in a){ let b=a[k]; while(b){ n+=b&1; b>>=1; } } return n; }
 /* v16 FINISH CELEBRATION (Stunt Paradise finish feel): camera swings round the car, 3 firework bursts over the
    finish gate, a FINISH! call-out, then the grade card. Tap / any key skips straight to the card. */
 let finaleCard = null;
@@ -3585,7 +3635,7 @@ function frame(now){
   for(const n of carVisual.nozzles){
     n.material.emissiveIntensity = (input.thrust && state.fuel>0 && state.mode==='play') ? 1.2 : 0.25;
   }
-  updateContactShadow(); updateShocks(raw); updateSkids(raw); updateSky(raw); updateHorizon(); updateBirds(raw); updateFlags(raw); updateSea(raw); updateFinale(raw);
+  updateContactShadow(); updateShocks(raw); updateSkids(raw); updateSky(raw); updateHorizon(); updateBirds(raw); updateFlags(raw); updateMotes(raw); updateChallenges(); updateSea(raw); updateFinale(raw);
   if(!document.hidden){ const _cpu1=performance.now(); renderer.render(scene, camera); cpuMeter(_cpu1-_cpu0, performance.now()-_cpu1); perfTick(now); } // v15: no GPU work while backgrounded
   requestAnimationFrame(frame);
 }
@@ -3655,7 +3705,7 @@ requestAnimationFrame(frame);
 
 // Expose for smoke tests
 window.__RSP = {
-  version:36, flags:()=>({..._flagStat}), track:()=>({builds:_trk.builds, reuses:_trk.reuses, matsDisposed:_trk.matsDisposed, mats:_trk.mats.length, geometries:renderer.info.memory.geometries}), birds:()=>({..._birdStat, n:BIRDS.N, visible:birds.visible}), mergeStat:()=>({..._mergeStat}), horizon:()=>({..._hzStat, visible:horizon.visible, verts:_hzGeo.attributes.position.count, x:+horizon.position.x.toFixed(2), camX:+camera.position.x.toFixed(2)}), carScreen:()=>{ const v=carVisual.group.position.clone().project(camera); return {x:(v.x+1)/2*innerWidth, y:(1-v.y)/2*innerHeight}; }, camStat:()=>({..._camStat}), _setFovFast:(f)=>{ camera.fov=f; setFovFast(camera); }, flame:()=>({visible:carVisual.flame.visible, k:+_flameSt.k.toFixed(3), len:+carVisual.flame.scale.x.toFixed(3), peak:+_flameSt.peak.toFixed(3), frames:_flameSt.frames, blend:carVisual.flame.material.blending, rgba:carVisual.flame.geometry.attributes.color.itemSize===4, verts:carVisual.flame.geometry.attributes.position.count}), carEnv:()=>({key:state.carEnvKey||null, built:_envBuilt, cached:Object.keys(_envCache).length, mats:Object.keys(CAR_ENV_K).map(k=>({k, env:!!carVisual.mats[k].envMap, i:carVisual.mats[k].envMapIntensity, same:carVisual.mats[k].envMap===_envCache[state.carEnvKey]}))}), _lookCheck:()=>{ const c=camera.clone(); c.lookAt(camState.look); return {dq:1-Math.abs(c.quaternion.dot(camera.quaternion))}; }, _projCheck:()=>{ const a=camera.projectionMatrix.elements.slice(), ai=camera.projectionMatrixInverse.elements.slice(); const c=camera.clone(); c.updateProjectionMatrix(); let d=0, di=0; for(let i=0;i<16;i++){ d=Math.max(d,Math.abs(a[i]-c.projectionMatrix.elements[i])); di=Math.max(di,Math.abs(ai[i]-c.projectionMatrixInverse.elements[i])); } return {d, di, fov:camera.fov}; }, cpuStats, nfStats:()=>({calls:_nf.calls, scanned:_nf.scanned, skipped:_nf.skipped}), nfReset:()=>{ _nf.calls=_nf.scanned=_nf.skipped=0; }, cpuReset:()=>{ _cpuI=0; _cpuFill=0; },
+  version:37, setStat:(k,v)=>{ state[k]=v; }, motes:()=>({key:_moteStat.key, n:MOTES.N, frames:_moteStat.frames, size:moteMat.size}), challenges:()=>({idx:_ch.idx, done:_ch.done, pops:_ch.pops, list:chList(_ch.idx).map(c=>c[2]), total:chTotal()}), flags:()=>({..._flagStat}), track:()=>({builds:_trk.builds, reuses:_trk.reuses, matsDisposed:_trk.matsDisposed, mats:_trk.mats.length, geometries:renderer.info.memory.geometries}), birds:()=>({..._birdStat, n:BIRDS.N, visible:birds.visible}), mergeStat:()=>({..._mergeStat}), horizon:()=>({..._hzStat, visible:horizon.visible, verts:_hzGeo.attributes.position.count, x:+horizon.position.x.toFixed(2), camX:+camera.position.x.toFixed(2)}), carScreen:()=>{ const v=carVisual.group.position.clone().project(camera); return {x:(v.x+1)/2*innerWidth, y:(1-v.y)/2*innerHeight}; }, camStat:()=>({..._camStat}), _setFovFast:(f)=>{ camera.fov=f; setFovFast(camera); }, flame:()=>({visible:carVisual.flame.visible, k:+_flameSt.k.toFixed(3), len:+carVisual.flame.scale.x.toFixed(3), peak:+_flameSt.peak.toFixed(3), frames:_flameSt.frames, blend:carVisual.flame.material.blending, rgba:carVisual.flame.geometry.attributes.color.itemSize===4, verts:carVisual.flame.geometry.attributes.position.count}), carEnv:()=>({key:state.carEnvKey||null, built:_envBuilt, cached:Object.keys(_envCache).length, mats:Object.keys(CAR_ENV_K).map(k=>({k, env:!!carVisual.mats[k].envMap, i:carVisual.mats[k].envMapIntensity, same:carVisual.mats[k].envMap===_envCache[state.carEnvKey]}))}), _lookCheck:()=>{ const c=camera.clone(); c.lookAt(camState.look); return {dq:1-Math.abs(c.quaternion.dot(camera.quaternion))}; }, _projCheck:()=>{ const a=camera.projectionMatrix.elements.slice(), ai=camera.projectionMatrixInverse.elements.slice(); const c=camera.clone(); c.updateProjectionMatrix(); let d=0, di=0; for(let i=0;i<16;i++){ d=Math.max(d,Math.abs(a[i]-c.projectionMatrix.elements[i])); di=Math.max(di,Math.abs(ai[i]-c.projectionMatrixInverse.elements[i])); } return {d, di, fov:camera.fov}; }, cpuStats, nfStats:()=>({calls:_nf.calls, scanned:_nf.scanned, skipped:_nf.skipped}), nfReset:()=>{ _nf.calls=_nf.scanned=_nf.skipped=0; }, cpuReset:()=>{ _cpuI=0; _cpuFill=0; },
   liteInfo:()=>({on:LITE.on, auto:_liteAuto, recovered:_liteRecovered, locked:_liteLocked, fast:_liteFast}), _setLiteAuto:(on)=>{ setLite(on); _liteAuto=on; },
   _perfTickSim:(fps,secs)=>{ for(let k=0;k<secs;k++){ _pfT=0; _pfN=0; _pfLast=1; const fd=1000/fps; let t=1; for(let i=0;i<=fps;i++){ t+=fd; perfTick(t); } } }, _nearestCmp:()=>{ const a=nearestFrame(car.pos), b=nearestFrameRef(car.pos); return {same:a===b, x:+car.pos.x.toFixed(2), g:car.grounded}; },
   levelTiles:()=>[...document.querySelectorAll('#levelGrid .lvlBtn')].map(b=>{ const r=b.querySelector('.hr'), cs=getComputedStyle(b); return {i:+b.dataset.i, locked:b.disabled, next:b.classList.contains('next'), three:b.classList.contains('three'), stars:b.querySelectorAll('.ts.on').length, starSlots:b.querySelectorAll('.ts').length, ring:r?{got:+r.dataset.got, miss:r.classList.contains('miss'), bg:getComputedStyle(r).backgroundImage, anim:getComputedStyle(r).animationName}:null, hoopCount:(b.querySelector('.hn')||{}).textContent||'', gold:!!b.querySelector('.gs:not(.off)'), score:(b.querySelector('.sc')||{}).textContent||'', bg:b.style.getPropertyValue('--bg'), anim:cs.animationName, h:b.getBoundingClientRect().height, label:b.getAttribute('aria-label')}; }),
