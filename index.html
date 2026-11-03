@@ -799,6 +799,23 @@ function updateHorizon(){ // parallax: ridge drifts at 12% of camera x, wraps on
   horizon.position.set(cx - off, camera.position.y*0.25, camera.position.z);
   _hzStat.frames++;
 }
+/* v35 VISUAL: a small flock of gull silhouettes gliding across the sky in a loose V, flapping in waves.
+   One InstancedMesh (9 birds, 4 tris each), follows the camera like the horizon ridge. 1 draw call. */
+const BIRDS = { N:9, z:-120, y:20 };
+const birdGeo = new THREE.BufferGeometry();
+birdGeo.setAttribute('position', new THREE.Float32BufferAttribute([0,0,0, -1.6,0.5,0, -0.5,0.15,0,  0,0,0, -0.5,0.15,0, -2.6,0.9,0.2,
+  0,0,0, 0.5,0.15,0, 1.6,0.5,0,  0,0,0, 2.6,0.9,0.2, 0.5,0.15,0], 3));
+const birdMat = new THREE.MeshBasicMaterial({ color:0x2a2f3a, side:THREE.DoubleSide, fog:false, transparent:true, opacity:0.85 });
+const birds = new THREE.InstancedMesh(birdGeo, birdMat, BIRDS.N); birds.frustumCulled = false; birds.renderOrder = -1; scene.add(birds);
+const _bm = new THREE.Matrix4(), _bq = new THREE.Quaternion(), _bp = new THREE.Vector3(), _bs = new THREE.Vector3();
+const _birdStat = { t:0, frames:0, flap:0 };
+function updateBirds(dt){ _birdStat.t += Math.min(dt||0.016, 0.05); const t = _birdStat.t; _birdStat.frames++;
+  const span = 260, lead = ((t*5 + span/2) % span) - span/2; // flock drifts right slowly, wraps out of view
+  for(let i=0;i<BIRDS.N;i++){ const row = Math.ceil(i/2), side = i===0?0:(i%2?-1:1);
+    const flap = 0.35 + 0.65*Math.abs(Math.sin(t*5.2 + i*0.7)); if(i===0) _birdStat.flap = +flap.toFixed(2);
+    _bp.set(camera.position.x*0.75 + lead - row*7, BIRDS.y + camera.position.y*0.3 + side*row*2.6 + Math.sin(t*0.8+i)*0.6, BIRDS.z + side*row*3);
+    _bs.set(2.6, 2.6*flap, 2.6); _bm.compose(_bp, _bq, _bs); birds.setMatrixAt(i, _bm); }
+  birds.instanceMatrix.needsUpdate = true; }
 /* v17 VISUAL: animated low-poly sea under the track (Beach, Ice, Paradise) and a glowing lava sea (Volcano).
    One faceted grid that follows the camera; heights are sampled in world space so the waves never swim. 1 draw call. */
 const SEA = { W:420, D:260, NX:60, NZ:30, Y:-10.4, z0:-215 };
@@ -1193,6 +1210,7 @@ const TRACK_W = 5.0, TRACK_T = 0.78;
 const RIDE = 0.04; // v9: car origin = wheel contact (wheel bottom is -0.034 local). v8 used 0.95 → car hovered ~0.92 above the road.
 function clearGroup(g){ while(g.children.length){ const c=g.children.pop(); if(c.isInstancedMesh) c.dispose(); else if(c.geometry) c.geometry.dispose(); } }
 
+const MERGE_CHUNK = 90; const _mergeStat = { chunks:0, railPieces:0 }; // v35: static track merged per material AND per 90-unit x chunk (was one mesh per material spanning the whole level, never culled)
 function mergeStatic(group){ // v9: one draw call per material instead of one per plank
   const byMat = new Map(), keep = [];
   group.updateMatrixWorld(true);
@@ -1202,13 +1220,15 @@ function mergeStatic(group){ // v9: one draw call per material instead of one pe
       for(const k of Object.keys(g.attributes)) if(!['position','normal','uv'].includes(k)) g.deleteAttribute(k);
       if(!g.attributes.uv){ keep.push(c); continue; }
       g.applyMatrix4(c.matrix);
-      const e = byMat.get(c.material) || {geos:[], cast:false, recv:false}; e.geos.push(g); e.cast ||= c.castShadow; e.recv ||= c.receiveShadow; byMat.set(c.material, e);
+      g.computeBoundingBox(); const bin = Math.floor((g.boundingBox.min.x + g.boundingBox.max.x)*0.5 / MERGE_CHUNK); // v35 TECH: spatial chunks so the frustum culls off-screen track
+      let bm = byMat.get(c.material); if(!bm){ bm = new Map(); byMat.set(c.material, bm); }
+      const e = bm.get(bin) || {geos:[], cast:false, recv:false}; e.geos.push(g); e.cast ||= c.castShadow; e.recv ||= c.receiveShadow; bm.set(bin, e);
       c.geometry.dispose();
     } else keep.push(c);
   }
   group.clear(); for(const k of keep) group.add(k);
-  for(const [mat, e] of byMat){
-    const m = new THREE.Mesh(mergeGeometries(e.geos, false), mat); m.castShadow = false; m.receiveShadow = e.recv || e.cast; group.add(m);
+  for(const [mat, bm] of byMat) for(const [, e] of bm){
+    const m = new THREE.Mesh(mergeGeometries(e.geos, false), mat); m.castShadow = false; m.receiveShadow = e.recv || e.cast; m.userData.chunk = true; group.add(m); _mergeStat.chunks++;
     e.geos.forEach(g=>g.dispose());
   }
 }
@@ -1266,12 +1286,14 @@ function buildTrackMeshes(framesData, theme){
         .add(f.normal.clone().multiplyScalar(0.28))
         .add(f.binormal.clone().multiplyScalar(side * TRACK_W * 0.5)));
       if(pts.length < 2) continue;
-      const railCurve = new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.1);
-      const rail = new THREE.Mesh(
-        new THREE.TubeGeometry(railCurve, Math.max(40, Math.floor(seg.length * 2.5)), 0.1, 6, false),
-        matRail
-      );
-      trackGroup.add(rail);
+      // v35 TECH: rails are built as ~60-unit pieces (sharing their end point) instead of one tube per whole segment, so
+      // mergeStatic's x-chunks can cull them; same tube density (2.5 rings per unit) and radius, so it looks the same.
+      let a = 0, run = 0;
+      for(let i=1;i<pts.length;i++){ run += pts[i].distanceTo(pts[i-1]);
+        if(run >= 60 || i === pts.length-1){ const sub = pts.slice(a, i+1); if(sub.length >= 2){
+            const railCurve = new THREE.CatmullRomCurve3(sub, false, 'catmullrom', 0.1);
+            trackGroup.add(new THREE.Mesh(new THREE.TubeGeometry(railCurve, Math.max(8, Math.floor(run * 2.5)), 0.1, 6, false), matRail)); _mergeStat.railPieces++; }
+          a = i; run = 0; } }
     }
   }
 
@@ -3533,7 +3555,7 @@ function frame(now){
   for(const n of carVisual.nozzles){
     n.material.emissiveIntensity = (input.thrust && state.fuel>0 && state.mode==='play') ? 1.2 : 0.25;
   }
-  updateContactShadow(); updateShocks(raw); updateSkids(raw); updateSky(raw); updateHorizon(); updateSea(raw); updateFinale(raw);
+  updateContactShadow(); updateShocks(raw); updateSkids(raw); updateSky(raw); updateHorizon(); updateBirds(raw); updateSea(raw); updateFinale(raw);
   if(!document.hidden){ const _cpu1=performance.now(); renderer.render(scene, camera); cpuMeter(_cpu1-_cpu0, performance.now()-_cpu1); perfTick(now); } // v15: no GPU work while backgrounded
   requestAnimationFrame(frame);
 }
@@ -3603,7 +3625,7 @@ requestAnimationFrame(frame);
 
 // Expose for smoke tests
 window.__RSP = {
-  version:34, horizon:()=>({..._hzStat, visible:horizon.visible, verts:_hzGeo.attributes.position.count, x:+horizon.position.x.toFixed(2), camX:+camera.position.x.toFixed(2)}), carScreen:()=>{ const v=carVisual.group.position.clone().project(camera); return {x:(v.x+1)/2*innerWidth, y:(1-v.y)/2*innerHeight}; }, camStat:()=>({..._camStat}), _setFovFast:(f)=>{ camera.fov=f; setFovFast(camera); }, flame:()=>({visible:carVisual.flame.visible, k:+_flameSt.k.toFixed(3), len:+carVisual.flame.scale.x.toFixed(3), peak:+_flameSt.peak.toFixed(3), frames:_flameSt.frames, blend:carVisual.flame.material.blending, rgba:carVisual.flame.geometry.attributes.color.itemSize===4, verts:carVisual.flame.geometry.attributes.position.count}), carEnv:()=>({key:state.carEnvKey||null, built:_envBuilt, cached:Object.keys(_envCache).length, mats:Object.keys(CAR_ENV_K).map(k=>({k, env:!!carVisual.mats[k].envMap, i:carVisual.mats[k].envMapIntensity, same:carVisual.mats[k].envMap===_envCache[state.carEnvKey]}))}), _lookCheck:()=>{ const c=camera.clone(); c.lookAt(camState.look); return {dq:1-Math.abs(c.quaternion.dot(camera.quaternion))}; }, _projCheck:()=>{ const a=camera.projectionMatrix.elements.slice(), ai=camera.projectionMatrixInverse.elements.slice(); const c=camera.clone(); c.updateProjectionMatrix(); let d=0, di=0; for(let i=0;i<16;i++){ d=Math.max(d,Math.abs(a[i]-c.projectionMatrix.elements[i])); di=Math.max(di,Math.abs(ai[i]-c.projectionMatrixInverse.elements[i])); } return {d, di, fov:camera.fov}; }, cpuStats, nfStats:()=>({calls:_nf.calls, scanned:_nf.scanned, skipped:_nf.skipped}), nfReset:()=>{ _nf.calls=_nf.scanned=_nf.skipped=0; }, cpuReset:()=>{ _cpuI=0; _cpuFill=0; },
+  version:35, birds:()=>({..._birdStat, n:BIRDS.N, visible:birds.visible}), mergeStat:()=>({..._mergeStat}), horizon:()=>({..._hzStat, visible:horizon.visible, verts:_hzGeo.attributes.position.count, x:+horizon.position.x.toFixed(2), camX:+camera.position.x.toFixed(2)}), carScreen:()=>{ const v=carVisual.group.position.clone().project(camera); return {x:(v.x+1)/2*innerWidth, y:(1-v.y)/2*innerHeight}; }, camStat:()=>({..._camStat}), _setFovFast:(f)=>{ camera.fov=f; setFovFast(camera); }, flame:()=>({visible:carVisual.flame.visible, k:+_flameSt.k.toFixed(3), len:+carVisual.flame.scale.x.toFixed(3), peak:+_flameSt.peak.toFixed(3), frames:_flameSt.frames, blend:carVisual.flame.material.blending, rgba:carVisual.flame.geometry.attributes.color.itemSize===4, verts:carVisual.flame.geometry.attributes.position.count}), carEnv:()=>({key:state.carEnvKey||null, built:_envBuilt, cached:Object.keys(_envCache).length, mats:Object.keys(CAR_ENV_K).map(k=>({k, env:!!carVisual.mats[k].envMap, i:carVisual.mats[k].envMapIntensity, same:carVisual.mats[k].envMap===_envCache[state.carEnvKey]}))}), _lookCheck:()=>{ const c=camera.clone(); c.lookAt(camState.look); return {dq:1-Math.abs(c.quaternion.dot(camera.quaternion))}; }, _projCheck:()=>{ const a=camera.projectionMatrix.elements.slice(), ai=camera.projectionMatrixInverse.elements.slice(); const c=camera.clone(); c.updateProjectionMatrix(); let d=0, di=0; for(let i=0;i<16;i++){ d=Math.max(d,Math.abs(a[i]-c.projectionMatrix.elements[i])); di=Math.max(di,Math.abs(ai[i]-c.projectionMatrixInverse.elements[i])); } return {d, di, fov:camera.fov}; }, cpuStats, nfStats:()=>({calls:_nf.calls, scanned:_nf.scanned, skipped:_nf.skipped}), nfReset:()=>{ _nf.calls=_nf.scanned=_nf.skipped=0; }, cpuReset:()=>{ _cpuI=0; _cpuFill=0; },
   liteInfo:()=>({on:LITE.on, auto:_liteAuto, recovered:_liteRecovered, locked:_liteLocked, fast:_liteFast}), _setLiteAuto:(on)=>{ setLite(on); _liteAuto=on; },
   _perfTickSim:(fps,secs)=>{ for(let k=0;k<secs;k++){ _pfT=0; _pfN=0; _pfLast=1; const fd=1000/fps; let t=1; for(let i=0;i<=fps;i++){ t+=fd; perfTick(t); } } }, _nearestCmp:()=>{ const a=nearestFrame(car.pos), b=nearestFrameRef(car.pos); return {same:a===b, x:+car.pos.x.toFixed(2), g:car.grounded}; },
   levelTiles:()=>[...document.querySelectorAll('#levelGrid .lvlBtn')].map(b=>{ const r=b.querySelector('.hr'), cs=getComputedStyle(b); return {i:+b.dataset.i, locked:b.disabled, next:b.classList.contains('next'), three:b.classList.contains('three'), stars:b.querySelectorAll('.ts.on').length, starSlots:b.querySelectorAll('.ts').length, ring:r?{got:+r.dataset.got, miss:r.classList.contains('miss'), bg:getComputedStyle(r).backgroundImage, anim:getComputedStyle(r).animationName}:null, hoopCount:(b.querySelector('.hn')||{}).textContent||'', gold:!!b.querySelector('.gs:not(.off)'), score:(b.querySelector('.sc')||{}).textContent||'', bg:b.style.getPropertyValue('--bg'), anim:cs.animationName, h:b.getBoundingClientRect().height, label:b.getAttribute('aria-label')}; }),
@@ -3613,7 +3635,7 @@ window.__RSP = {
   kicker:()=>{ const K=state.level&&state.level._kick; return K?{x:K.x, cx:K.cx, amp:K.amp, hits:K.hits, kicks:state.kicks||0, carX:car.pos.x, air:!car.grounded}:null; }, seaFx:()=>({fog:seaMat.fog, ei:seaMat.emissiveIntensity, embers:seaState.embers||0, caps:seaState.caps||0}), calls:()=>renderer.info.render.calls,
   audio, sea:()=>({visible:sea.visible, key:seaState.key, y:sea.position.y, h0:seaGeo.attributes.position.array[1], h1:seaGeo.attributes.position.array[301], t:seaState.t, camDx:Math.abs(sea.position.x-camera.position.x)}), dolphins:()=>{ const D=state.level&&state.level._dol; return D?{n:D.pods.length, fired:D.fired, splashes:D.splashes, highFive:D.highFive, peak:D.peakSeen, maxY:Math.max(...D.pods.map(p=>p.m.position.y)), slowmo:state.dolSlowmo||0, highFives:state.dolHighFives||0}:null; },
   finale:()=>({active:!!state.finale, t:state.finale?+state.finale.t.toFixed(2):0, bursts:state.finale?state.finale.bursts:0, count:state.finaleCount||0, cardShown:!document.getElementById('overlay').classList.contains('hidden')}),
-  sky:()=>{ const U=skyMat.uniforms; return {top:U.top.value.getHexString(), hor:U.hor.value.getHexString(), fog:scene.fog?scene.fog.color.getHexString():null, clouds:clouds.count, cloudVis:clouds.visible, domeAtCam:skyDome.position.distanceTo(camera.position)<0.01}; }, failRun, _sample:sampleSegment, _renderer:renderer, _scene:scene,
+  sky:()=>{ const U=skyMat.uniforms; return {top:U.top.value.getHexString(), hor:U.hor.value.getHexString(), fog:scene.fog?scene.fog.color.getHexString():null, clouds:clouds.count, cloudVis:clouds.visible, domeAtCam:skyDome.position.distanceTo(camera.position)<0.01}; }, failRun, _sample:sampleSegment, _renderer:renderer, _scene:scene, _carGroup:carVisual.group,
   bridge:()=>{ const b=state.level&&state.level._bridge; return b?{n:b.planks.length, x0:+b.x0.toFixed(1), x1:+b.x1.toFixed(1), fallen:b.fallen, cleared:b.cleared, runs:state.bridgeRuns||0}:null; },
   gLean:()=>+(state.gLean||0).toFixed(3),
   gate:()=>{ const G=state.level&&state.level._gate; return G?{bx:+G.bx.toFixed(1), gx:+G.gx.toFixed(1), pressed:G.pressed, bonus:G.bonus, open:+G.open.toFixed(2), opened:G.opened, n:state.gatesOpened||0}:null; },
