@@ -1365,7 +1365,7 @@ function buildTrackMeshes(framesData, theme){
   if(_flagSpots.length){ const fl = new THREE.InstancedMesh(flagGeo, flagMat, _flagSpots.length); fl.userData.dynamic = true; fl.frustumCulled = false;
     const cols = [0xff4d6d, 0xffd23f, 0x3fa9ff, 0x4be37a], c = new THREE.Color(), m4 = new THREE.Matrix4();
     _flagSpots.forEach((p, k)=>{ m4.makeTranslation(p.x, p.y, p.z); fl.setMatrixAt(k, m4); fl.setColorAt(k, c.set(cols[k % 4])); });
-    decorGroup.add(fl); } _flagStat.n = _flagSpots.length;
+    fl.updateMatrix(); fl.matrixAutoUpdate = false; decorGroup.add(fl); } _flagStat.n = _flagSpots.length;
 }
 
 function nearestFrameToXY(framesData, x, y){
